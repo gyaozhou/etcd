@@ -114,7 +114,9 @@ type httpMembersAPI struct {
 	client httpClient
 }
 
+// zhou: 
 func (m *httpMembersAPI) List(ctx context.Context) ([]Member, error) {
+
 	req := &membersAPIActionList{}
 	resp, body, err := m.client.Do(ctx, req)
 	if err != nil {
@@ -221,14 +223,17 @@ func (m *httpMembersAPI) Leader(ctx context.Context) (*Member, error) {
 	return &leader, nil
 }
 
+// zhou: list all cluster members
 type membersAPIActionList struct{}
 
+// zhou: convert "membersAPIActionList "list" to "http.Request"
 func (l *membersAPIActionList) HTTPRequest(ep url.URL) *http.Request {
 	u := v2MembersURL(ep)
 	req, _ := http.NewRequest("GET", u.String(), nil)
 	return req
 }
 
+// zhou: remove one member from cluster
 type membersAPIActionRemove struct {
 	memberID string
 }
@@ -240,6 +245,7 @@ func (d *membersAPIActionRemove) HTTPRequest(ep url.URL) *http.Request {
 	return req
 }
 
+// zhou: add one member to cluster
 type membersAPIActionAdd struct {
 	peerURLs types.URLs
 }
@@ -253,6 +259,7 @@ func (a *membersAPIActionAdd) HTTPRequest(ep url.URL) *http.Request {
 	return req
 }
 
+// zhou: update cluster member
 type membersAPIActionUpdate struct {
 	memberID string
 	peerURLs types.URLs
@@ -277,6 +284,7 @@ func assertStatusCode(got int, want ...int) (err error) {
 	return fmt.Errorf("unexpected status code %d", got)
 }
 
+// zhou: query who is cluster leader.
 type membersAPIActionLeader struct{}
 
 func (l *membersAPIActionLeader) HTTPRequest(ep url.URL) *http.Request {

@@ -21,6 +21,8 @@ import (
 	pb "go.etcd.io/etcd/raft/raftpb"
 )
 
+// zhou: 
+
 type raftLog struct {
 	// storage contains all stable entries since the last snapshot.
 	storage Storage
@@ -32,6 +34,7 @@ type raftLog struct {
 	// committed is the highest log position that is known to be in
 	// stable storage on a quorum of nodes.
 	committed uint64
+
 	// applied is the highest log position that the application has
 	// been instructed to apply to its state machine.
 	// Invariant: applied <= committed
@@ -62,14 +65,17 @@ func newLogWithSize(storage Storage, logger Logger, maxNextEntsSize uint64) *raf
 		logger:          logger,
 		maxNextEntsSize: maxNextEntsSize,
 	}
+
 	firstIndex, err := storage.FirstIndex()
 	if err != nil {
 		panic(err) // TODO(bdarnell)
 	}
+
 	lastIndex, err := storage.LastIndex()
 	if err != nil {
 		panic(err) // TODO(bdarnell)
 	}
+
 	log.unstable.offset = lastIndex + 1
 	log.unstable.logger = logger
 	// Initialize our committed and applied pointers to the time of the last compaction.
@@ -83,10 +89,17 @@ func (l *raftLog) String() string {
 	return fmt.Sprintf("committed=%d, applied=%d, unstable.offset=%d, len(unstable.Entries)=%d", l.committed, l.applied, l.unstable.offset, len(l.unstable.entries))
 }
 
+// zhou: when Follower received from Leader
+//       "index", last replicated log index, to match Follower received.
+//       "logTerm", replicated log correponding Term.
+//       "committed", Leader committed log index. 
+
 // maybeAppend returns (0, false) if the entries cannot be appended. Otherwise,
 // it returns (last index of new entries, true).
 func (l *raftLog) maybeAppend(index, logTerm, committed uint64, ents ...pb.Entry) (lastnewi uint64, ok bool) {
+
 	if l.matchTerm(index, logTerm) {
+
 		lastnewi = index + uint64(len(ents))
 		ci := l.findConflict(ents)
 		switch {
@@ -104,15 +117,21 @@ func (l *raftLog) maybeAppend(index, logTerm, committed uint64, ents ...pb.Entry
 }
 
 func (l *raftLog) append(ents ...pb.Entry) uint64 {
+
 	if len(ents) == 0 {
 		return l.lastIndex()
 	}
+
 	if after := ents[0].Index - 1; after < l.committed {
 		l.logger.Panicf("after(%d) is out of range [committed(%d)]", after, l.committed)
 	}
+
 	l.unstable.truncateAndAppend(ents)
+
 	return l.lastIndex()
 }
+
+// zhou: 
 
 // findConflict finds the index of the conflict.
 // It returns the first pair of conflicting entries between the existing
@@ -185,6 +204,7 @@ func (l *raftLog) firstIndex() uint64 {
 	return index
 }
 
+// zhou: get latest received log index, maybe not commit.
 func (l *raftLog) lastIndex() uint64 {
 	if i, ok := l.unstable.maybeLastIndex(); ok {
 		return i
@@ -202,8 +222,11 @@ func (l *raftLog) commitTo(tocommit uint64) {
 		if l.lastIndex() < tocommit {
 			l.logger.Panicf("tocommit(%d) is out of range [lastIndex(%d)]. Was the raft log corrupted, truncated, or lost?", tocommit, l.lastIndex())
 		}
+		// zhou: do nothing else? When to apply to State Machine?
 		l.committed = tocommit
 	}
+
+	// zhou: what happened when "l.committed > tocommit" ?
 }
 
 func (l *raftLog) appliedTo(i uint64) {
@@ -220,13 +243,20 @@ func (l *raftLog) stableTo(i, t uint64) { l.unstable.stableTo(i, t) }
 
 func (l *raftLog) stableSnapTo(i uint64) { l.unstable.stableSnapTo(i) }
 
+// zhou: Term when received latest log entry.
+//       It maybe different from current Term due no log received in this Term.
 func (l *raftLog) lastTerm() uint64 {
+
 	t, err := l.term(l.lastIndex())
+
 	if err != nil {
 		l.logger.Panicf("unexpected error when getting the last term (%v)", err)
 	}
+
 	return t
 }
+
+// zhou: 
 
 func (l *raftLog) term(i uint64) (uint64, error) {
 	// the valid term range is [index of dummy entry, last index]
@@ -269,6 +299,8 @@ func (l *raftLog) allEntries() []pb.Entry {
 	// TODO (xiangli): handle error?
 	panic(err)
 }
+
+// zhou: how to judge log updated!!!
 
 // isUpToDate determines if the given (lastIndex,term) log is more up-to-date
 // by comparing the index and term of the last entries in the existing logs.

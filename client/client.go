@@ -39,6 +39,8 @@ var (
 	ErrNoLeaderEndpoint      = errors.New("client: no leader endpoint available")
 	errTooManyRedirectChecks = errors.New("client: too many redirect checks")
 
+	// zhou:
+
 	// oneShotCtxValue is set on a context using WithValue(&oneShotValue) so
 	// that Do() will not retry a request
 	oneShotCtxValue interface{}
@@ -46,12 +48,17 @@ var (
 
 var DefaultRequestTimeout = 5 * time.Second
 
+// zhou: "class" net/http.Transport defines a lot of methods, including "RoundTripper interface", 
+//       and interface CancelableTransport.
 var DefaultTransport CancelableTransport = &http.Transport{
+
 	Proxy: http.ProxyFromEnvironment,
 	Dial: (&net.Dialer{
+		// zhou: set timeout value for both of them as 30s
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
 	}).Dial,
+
 	TLSHandshakeTimeout: 10 * time.Second,
 }
 
@@ -78,6 +85,7 @@ const (
 	EndpointSelectionPrioritizeLeader
 )
 
+// zhou: used to describe which Etcd cluster node, the client want to send request.
 type Config struct {
 	// Endpoints defines a set of URLs (schemes, hosts and ports only)
 	// that can be used to communicate with a logical etcd cluster. For
@@ -142,6 +150,10 @@ type Config struct {
 	SelectionMode EndpointSelectionMode
 }
 
+// zhou: etcd/client library, doesn't not includes concrete transport methods, 
+//       client could provide their own implementation which must be match 
+//       interface CancelableTransport definition.
+//       etcd/client provide default concrete transport methods, net/http.transport
 func (cfg *Config) transport() CancelableTransport {
 	if cfg.Transport == nil {
 		return DefaultTransport
@@ -159,11 +171,21 @@ func (cfg *Config) checkRedirect() CheckRedirectFunc {
 // CancelableTransport mimics net/http.Transport, but requires that
 // the object also support request cancellation.
 type CancelableTransport interface {
+	// zhou: interface, single http request and block for response.
+	//       In fact, we can define our own RoundTrip(), here just for reuse.
 	http.RoundTripper
+
+	// zhou: same parameter as net/http.RoundTripper.RoundTrip(), used to cancel it.
 	CancelRequest(req *http.Request)
 }
 
+// zhou: type fo function, golang has a problem that it's not easy to know a value 
+//       or a type. Because the caplitialized is used for access control.
+
 type CheckRedirectFunc func(via int) error
+
+// zhou: default implementation only takes care the maximum redirect times,
+//       client could put more actions before redirect happened. 
 
 // DefaultCheckRedirect follows up to 10 redirects, but no more.
 var DefaultCheckRedirect CheckRedirectFunc = func(via int) error {
@@ -173,6 +195,7 @@ var DefaultCheckRedirect CheckRedirectFunc = func(via int) error {
 	return nil
 }
 
+// zhou: owned by customer.
 type Client interface {
 	// Sync updates the internal cache of the etcd cluster's membership.
 	Sync(context.Context) error
@@ -193,6 +216,8 @@ type Client interface {
 	//  }
 	AutoSync(context.Context, time.Duration) error
 
+	// zhou: sync means following cluster memeber change?
+
 	// Endpoints returns a copy of the current set of API endpoints used
 	// by Client to resolve HTTP requests. If Sync has ever been called,
 	// this may differ from the initial Endpoints provided in the Config.
@@ -206,15 +231,21 @@ type Client interface {
 	// GetVersion retrieves the current etcd server and cluster version
 	GetVersion(ctx context.Context) (*version.Versions, error)
 
+	// zhou: although "httpClient interface" doesn't expose to customer, but 
+	//       "httpClient.Do()" exposed to customer due to "Client interface" 
+	//       could be accessed by customer.
 	httpClient
 }
 
+// zhou: create Object client used in following operation, refer to example in client/doc.go.
 func New(cfg Config) (Client, error) {
+
 	c := &httpClusterClient{
 		clientFactory: newHTTPClientFactory(cfg.transport(), cfg.checkRedirect(), cfg.HeaderTimeoutPerRequest),
 		rand:          rand.New(rand.NewSource(int64(time.Now().Nanosecond()))),
 		selectionMode: cfg.SelectionMode,
 	}
+
 	if cfg.Username != "" {
 		c.credentials = &credentials{
 			username: cfg.Username,
@@ -227,12 +258,16 @@ func New(cfg Config) (Client, error) {
 	return c, nil
 }
 
+// zhou: interface means it's object must provide such methods.
 type httpClient interface {
 	Do(context.Context, httpAction) (*http.Response, []byte, error)
 }
 
+// zhou: closure function which will make anonymous function.
 func newHTTPClientFactory(tr CancelableTransport, cr CheckRedirectFunc, headerTimeout time.Duration) httpClientFactory {
+	// zhou: all anonymous functions share the same parameters "tr" and "cr".
 	return func(ep url.URL) httpClient {
+		// zhou: anonymous function return a struct
 		return &redirectFollowingHTTPClient{
 			checkRedirect: cr,
 			client: &simpleHTTPClient{
@@ -255,9 +290,15 @@ type httpAction interface {
 	HTTPRequest(url.URL) *http.Request
 }
 
+// zhou: although "httpClusterClient struct" can't be accessed by customer, but
+//       "Client interface" could. And "httpClusterClient" satisfied "Client".
+//       So, customer could access "httpClusterClient" methods via "Client".
+//       We only expose interface with limited methods to customer by this way.
 type httpClusterClient struct {
 	clientFactory httpClientFactory
+
 	endpoints     []url.URL
+    // zhou: last action performed by node "endpoints[pinned]".
 	pinned        int
 	credentials   *credentials
 	sync.RWMutex
@@ -329,14 +370,18 @@ func (c *httpClusterClient) SetEndpoints(eps []string) error {
 	return nil
 }
 
+// zhou: perform client's key/value operations
 func (c *httpClusterClient) Do(ctx context.Context, act httpAction) (*http.Response, []byte, error) {
+
 	action := act
+
 	c.RLock()
 	leps := len(c.endpoints)
 	eps := make([]url.URL, leps)
 	n := copy(eps, c.endpoints)
 	pinned := c.pinned
 
+	// zhou: "authedAction struct" includes extra infor comparing to "httpAction interface"
 	if c.credentials != nil {
 		action = &authedAction{
 			act:         act,
@@ -360,18 +405,29 @@ func (c *httpClusterClient) Do(ctx context.Context, act httpAction) (*http.Respo
 	isOneShot := ctx.Value(&oneShotCtxValue) != nil
 
 	for i := pinned; i < leps+pinned; i++ {
+
 		k := i % leps
+		// zhou: get class "redirectFollowingHTTPClient struct"
 		hc := c.clientFactory(eps[k])
+
+		// zhou: invoke "redirectFollowingHTTPClient.Do()"
 		resp, body, err = hc.Do(ctx, action)
+
 		if err != nil {
+			// zhou: error logs.
 			cerr.Errors = append(cerr.Errors, err)
+
+			// zhou: ???
 			if err == ctx.Err() {
 				return nil, nil, ctx.Err()
 			}
+
 			if err == context.Canceled || err == context.DeadlineExceeded {
 				return nil, nil, err
 			}
 		} else if resp.StatusCode/100 == 5 {
+			// zhou: 500~599 define Server errors.
+
 			switch resp.StatusCode {
 			case http.StatusInternalServerError, http.StatusServiceUnavailable:
 				// TODO: make sure this is a no leader response
@@ -381,7 +437,9 @@ func (c *httpClusterClient) Do(ctx context.Context, act httpAction) (*http.Respo
 			}
 			err = cerr.Errors[0]
 		}
+
 		if err != nil {
+
 			if !isOneShot {
 				continue
 			}
@@ -389,7 +447,9 @@ func (c *httpClusterClient) Do(ctx context.Context, act httpAction) (*http.Respo
 			c.pinned = (k + 1) % leps
 			c.Unlock()
 			return nil, nil, err
+
 		}
+
 		if k != pinned {
 			c.Lock()
 			c.pinned = k
@@ -414,6 +474,7 @@ func (c *httpClusterClient) Endpoints() []string {
 }
 
 func (c *httpClusterClient) Sync(ctx context.Context) error {
+
 	mAPI := NewMembersAPI(c)
 	ms, err := mAPI.List(ctx)
 	if err != nil {
@@ -521,7 +582,11 @@ type simpleHTTPClient struct {
 	headerTimeout time.Duration
 }
 
+// zhou: 
 func (c *simpleHTTPClient) Do(ctx context.Context, act httpAction) (*http.Response, []byte, error) {
+
+	// zhou: invoke such functions depends on action type, 
+    //       "setAction.HTTPRequest()", "getAction.HTTPRequest()", ...
 	req := act.HTTPRequest(c.endpoint)
 
 	if err := printcURL(req); err != nil {
@@ -530,7 +595,9 @@ func (c *simpleHTTPClient) Do(ctx context.Context, act httpAction) (*http.Respon
 
 	isWait := false
 	if req != nil && req.URL != nil {
+		// zhou: used in "waitAction"
 		ws := req.URL.Query().Get("wait")
+
 		if len(ws) != 0 {
 			var err error
 			isWait, err = strconv.ParseBool(ws)
@@ -553,6 +620,7 @@ func (c *simpleHTTPClient) Do(ctx context.Context, act httpAction) (*http.Respon
 
 	rtchan := make(chan roundTripResponse, 1)
 	go func() {
+		// zhou: invoke net/http.Transport.RoundTrip()"
 		resp, err := c.transport.RoundTrip(req)
 		rtchan <- roundTripResponse{resp: resp, err: err}
 		close(rtchan)
@@ -561,14 +629,22 @@ func (c *simpleHTTPClient) Do(ctx context.Context, act httpAction) (*http.Respon
 	var resp *http.Response
 	var err error
 
+	// zhou: block wait for response or timeout
 	select {
+
 	case rtresp := <-rtchan:
+		// zhou: get response
 		resp, err = rtresp.resp, rtresp.err
+
 	case <-hctx.Done():
+		// zhou: get receive channel from context.Context.Done(), to receive preempt notification.
+
+		// zhou: notify "net/http.Request" cancel,  via channel created in requestCanceler().
 		// cancel and wait for request to actually exit before continuing
 		reqcancel()
 		rtresp := <-rtchan
 		resp = rtresp.resp
+
 		switch {
 		case ctx.Err() != nil:
 			err = ctx.Err()
@@ -579,10 +655,14 @@ func (c *simpleHTTPClient) Do(ctx context.Context, act httpAction) (*http.Respon
 		}
 	}
 
+	// zhou: maybe get response and timeout at same time, and we handle timeout firstly.
+	//       In this case, the "resp" conatins real data.
+
 	// always check for resp nil-ness to deal with possible
 	// race conditions between channels above
 	defer func() {
 		if resp != nil {
+			// zhou: used for ???
 			resp.Body.Close()
 		}
 	}()
@@ -620,24 +700,36 @@ func (a *authedAction) HTTPRequest(url url.URL) *http.Request {
 	return r
 }
 
+// zhou: the methods of this struct, match interface httpClient. 
+//       At the sametime, it needs "client" provide interface httpClient.
+//       
 type redirectFollowingHTTPClient struct {
+	// zhou: another struct which can provide interface httpClient.
 	client        httpClient
 	checkRedirect CheckRedirectFunc
 }
 
+// zhou: 
 func (r *redirectFollowingHTTPClient) Do(ctx context.Context, act httpAction) (*http.Response, []byte, error) {
+
 	next := act
+
 	for i := 0; i < 100; i++ {
 		if i > 0 {
 			if err := r.checkRedirect(i); err != nil {
 				return nil, nil, err
 			}
 		}
+		// zhou: "simpleHTTPClient.Do()"
 		resp, body, err := r.client.Do(ctx, next)
+
 		if err != nil {
 			return nil, nil, err
 		}
+
 		if resp.StatusCode/100 == 3 {
+			// zhou: 300~399 define http Redirection.
+
 			hdr := resp.Header.Get("Location")
 			if hdr == "" {
 				return nil, nil, fmt.Errorf("location header not set")
@@ -646,6 +738,8 @@ func (r *redirectFollowingHTTPClient) Do(ctx context.Context, act httpAction) (*
 			if err != nil {
 				return nil, nil, fmt.Errorf("location header not valid URL: %s", hdr)
 			}
+
+			// zhou:
 			next = &redirectedHTTPAction{
 				action:   act,
 				location: *loc,

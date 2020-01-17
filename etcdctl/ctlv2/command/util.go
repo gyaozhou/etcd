@@ -301,6 +301,7 @@ func mustNewClientNoSync(c *cli.Context) client.Client {
 	return hc
 }
 
+// zhou: this file is interact with ../client/
 func newClient(c *cli.Context) (client.Client, error) {
 	eps, err := getEndpoints(c)
 	if err != nil {

@@ -73,10 +73,16 @@ type configProxy struct {
 	FallbackJSON           string `json:"discovery-fallback"`
 }
 
+// zhou:
+
 // config holds the config for a command line invocation of etcd
 type config struct {
+	// zhou: etcd server mode config
 	ec           embed.Config
+
+	// zhou: etcd proxy mode config
 	cp           configProxy
+	// zhou: cli arguments
 	cf           configFlags
 	configFile   string
 	printVersion bool
@@ -91,7 +97,9 @@ type configFlags struct {
 	proxy        *flags.SelectiveStringValue
 }
 
+// zhou: handle "etcd" command line arguments
 func newConfig() *config {
+
 	cfg := &config{
 		ec: *embed.NewConfig(),
 		cp: configProxy{
@@ -103,6 +111,7 @@ func newConfig() *config {
 		},
 		ignored: ignored,
 	}
+
 	cfg.cf = configFlags{
 		flagSet: flag.NewFlagSet("etcd", flag.ContinueOnError),
 		clusterState: flags.NewSelectiveStringValue(
@@ -119,6 +128,9 @@ func newConfig() *config {
 			proxyFlagOn,
 		),
 	}
+
+
+	// zhou: all cli arguments 
 
 	fs := cfg.cf.flagSet
 	fs.Usage = func() {
@@ -161,6 +173,7 @@ func newConfig() *config {
 	fs.DurationVar(&cfg.ec.GRPCKeepAliveInterval, "grpc-keepalive-interval", cfg.ec.GRPCKeepAliveInterval, "Frequency duration of server-to-client ping to check if a connection is alive (0 to disable).")
 	fs.DurationVar(&cfg.ec.GRPCKeepAliveTimeout, "grpc-keepalive-timeout", cfg.ec.GRPCKeepAliveTimeout, "Additional duration of wait before closing a non-responsive connection (0 to disable).")
 
+
 	// clustering
 	fs.Var(
 		flags.NewUniqueURLsWithExceptions(embed.DefaultInitialAdvertisePeerURLs, ""),
@@ -186,6 +199,7 @@ func newConfig() *config {
 	fs.BoolVar(&cfg.ec.EnableV2, "enable-v2", cfg.ec.EnableV2, "Accept etcd V2 client requests.")
 	fs.BoolVar(&cfg.ec.PreVote, "pre-vote", cfg.ec.PreVote, "Enable to run an additional Raft election phase.")
 
+
 	// proxy
 	fs.Var(cfg.cf.proxy, "proxy", fmt.Sprintf("Valid values include %q", cfg.cf.proxy.Valids()))
 	fs.UintVar(&cfg.cp.ProxyFailureWaitMs, "proxy-failure-wait", cfg.cp.ProxyFailureWaitMs, "Time (in milliseconds) an endpoint will be held in a failed state.")
@@ -193,6 +207,7 @@ func newConfig() *config {
 	fs.UintVar(&cfg.cp.ProxyDialTimeoutMs, "proxy-dial-timeout", cfg.cp.ProxyDialTimeoutMs, "Time (in milliseconds) for a dial to timeout.")
 	fs.UintVar(&cfg.cp.ProxyWriteTimeoutMs, "proxy-write-timeout", cfg.cp.ProxyWriteTimeoutMs, "Time (in milliseconds) for a write to timeout.")
 	fs.UintVar(&cfg.cp.ProxyReadTimeoutMs, "proxy-read-timeout", cfg.cp.ProxyReadTimeoutMs, "Time (in milliseconds) for a read to timeout.")
+
 
 	// security
 	fs.StringVar(&cfg.ec.ClientTLSInfo.CertFile, "cert-file", "", "Path to the client server TLS cert file.")
@@ -220,6 +235,7 @@ func newConfig() *config {
 	)
 	fs.Var(flags.NewUniqueStringsValue("*"), "host-whitelist", "Comma-separated acceptable hostnames from HTTP client requests, if server is not secure (empty means allow all).")
 
+
 	// logging
 	fs.StringVar(&cfg.ec.Logger, "logger", "capnslog", "Specify 'zap' for structured logging or 'capnslog'. WARN: 'capnslog' is being deprecated in v3.5.")
 	fs.Var(flags.NewUniqueStringsValue(embed.DefaultLogOutput), "log-output", "[TO BE DEPRECATED IN v3.5] use '--log-outputs'.")
@@ -227,6 +243,7 @@ func newConfig() *config {
 	fs.BoolVar(&cfg.ec.Debug, "debug", false, "[TO BE DEPRECATED IN v3.5] Enable debug-level logging for etcd. Use '--log-level=debug' instead.")
 	fs.StringVar(&cfg.ec.LogLevel, "log-level", logutil.DefaultLogLevel, "Configures log level. Only supports debug, info, warn, error, panic, or fatal. Default 'info'.")
 	fs.StringVar(&cfg.ec.LogPkgLevels, "log-package-levels", "", "[TO BE DEPRECATED IN v3.5] Specify a particular log level for each etcd package (eg: 'etcdmain=CRITICAL,etcdserver=DEBUG').")
+
 
 	// version
 	fs.BoolVar(&cfg.printVersion, "version", false, "Print the version and exit.")
@@ -264,7 +281,9 @@ func newConfig() *config {
 	return cfg
 }
 
+// zhou: "cfg.parse(os.Args[1:])"
 func (cfg *config) parse(arguments []string) error {
+
 	perr := cfg.cf.flagSet.Parse(arguments)
 	switch perr {
 	case nil:

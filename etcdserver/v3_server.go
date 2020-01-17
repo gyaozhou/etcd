@@ -668,6 +668,7 @@ func (s *EtcdServer) processInternalRaftRequestOnce(ctx context.Context, r pb.In
 // Watchable returns a watchable interface attached to the etcdserver.
 func (s *EtcdServer) Watchable() mvcc.WatchableKV { return s.KV() }
 
+// zhou: handle read?
 func (s *EtcdServer) linearizableReadLoop() {
 	var rs raft.ReadState
 

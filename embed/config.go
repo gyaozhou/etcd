@@ -45,15 +45,17 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
+// zhou: default configuration
 const (
 	ClusterStateFlagNew      = "new"
 	ClusterStateFlagExisting = "existing"
-
+	
 	DefaultName                  = "default"
 	DefaultMaxSnapshots          = 5
 	DefaultMaxWALs               = 5
 	DefaultMaxTxnOps             = uint(128)
 	DefaultMaxRequestBytes       = 1.5 * 1024 * 1024
+
 	DefaultGRPCKeepAliveMinTime  = 5 * time.Second
 	DefaultGRPCKeepAliveInterval = 2 * time.Hour
 	DefaultGRPCKeepAliveTimeout  = 20 * time.Second
@@ -113,10 +115,18 @@ func init() {
 	defaultHostname, defaultHostStatus = netutil.GetDefaultHost()
 }
 
+// zhou: there are three copies of configuration, 
+//       embed/Config, etcdserver/ServerConfig, raft/Config (only focus on Raft related)
+
 // Config holds the arguments for configuring an etcd server.
 type Config struct {
+
+	// zhou: Node Name
 	Name   string `json:"name"`
+	// zhou: used to store data, including Node ID, cluster ID, configuration, snapshot,
+	//       WAL files(if not specify "WalDir")
 	Dir    string `json:"data-dir"`
+	// zhou: "*.wal" files
 	WalDir string `json:"wal-dir"`
 
 	SnapshotCount uint64 `json:"snapshot-count"`
@@ -178,8 +188,15 @@ type Config struct {
 	MaxTxnOps           uint   `json:"max-txn-ops"`
 	MaxRequestBytes     uint   `json:"max-request-bytes"`
 
+	// zhou: Listen Peer URLs, list of URLs to listen on for peer traffic.
+	//       Listen Client URLs, list of URLs to listen on for client traffic.
 	LPUrls, LCUrls []url.URL
+	// zhou: Advertise Peer URLs, list of this member's peer URLs to advertise to
+	//       the rest of the cluster. 
+	//       Advertise Client URLs, list of this member's client URLs to advertise
+	//       to the rest of the cluster. These URLs can contain domain names.
 	APUrls, ACUrls []url.URL
+
 	ClientTLSInfo  transport.TLSInfo
 	ClientAutoTLS  bool
 	PeerTLSInfo    transport.TLSInfo
@@ -195,7 +212,9 @@ type Config struct {
 	DNSClusterServiceName string `json:"discovery-srv-name"`
 	Dproxy                string `json:"discovery-proxy"`
 	Durl                  string `json:"discovery"`
+	// zhou: all members of the cluster
 	InitialCluster        string `json:"initial-cluster"`
+	// zhou: Cluter Name
 	InitialClusterToken   string `json:"initial-cluster-token"`
 	StrictReconfigCheck   bool   `json:"strict-reconfig-check"`
 	EnableV2              bool   `json:"enable-v2"`
@@ -365,12 +384,16 @@ type securityConfig struct {
 	AutoTLS       bool   `json:"auto-tls"`
 }
 
+// zhou: just create a instance of "Config" of Etcd Server with default values.
+
 // NewConfig creates a new Config populated with default values.
 func NewConfig() *Config {
+
 	lpurl, _ := url.Parse(DefaultListenPeerURLs)
 	apurl, _ := url.Parse(DefaultInitialAdvertisePeerURLs)
 	lcurl, _ := url.Parse(DefaultListenClientURLs)
 	acurl, _ := url.Parse(DefaultAdvertiseClientURLs)
+
 	cfg := &Config{
 		MaxSnapFiles: DefaultMaxSnapshots,
 		MaxWalFiles:  DefaultMaxWALs,

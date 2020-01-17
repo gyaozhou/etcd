@@ -23,6 +23,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// zhou: entry of etcd command
 func Main() {
 	checkSupportArch()
 
@@ -43,9 +44,11 @@ func Main() {
 		}
 	}
 
+	// zhou: etcd could run in either "etcd" or "proxy" modes, which depending on the arguments.
 	startEtcdOrProxyV2()
 }
 
+// zhou: let systemd status be ready.
 func notifySystemd(lg *zap.Logger) {
 	_, err := daemon.SdNotify(false, daemon.SdNotifyReady)
 	if err != nil {

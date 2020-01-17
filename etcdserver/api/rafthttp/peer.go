@@ -82,6 +82,8 @@ type Peer interface {
 	stop()
 }
 
+// zhou: !!!
+
 // peer is the representative of a remote raft node. Local raft node sends
 // messages to the remote through peer.
 // Each peer has two underlying mechanisms to send out a message: stream and
@@ -123,6 +125,7 @@ type peer struct {
 	stopc  chan struct{}
 }
 
+// zhou: 
 func startPeer(t *Transport, urls types.URLs, peerID types.ID, fs *stats.FollowerStats) *peer {
 	if t.Logger != nil {
 		t.Logger.Info("starting remote peer", zap.String("remote-peer-id", peerID.String()))
@@ -232,6 +235,7 @@ func startPeer(t *Transport, urls types.URLs, peerID types.ID, fs *stats.Followe
 	return p
 }
 
+// zhou: 
 func (p *peer) send(m raftpb.Message) {
 	p.mu.Lock()
 	paused := p.paused

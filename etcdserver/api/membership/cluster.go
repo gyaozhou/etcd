@@ -73,7 +73,9 @@ type ConfigChangeContext struct {
 // NewClusterFromURLsMap creates a new raft cluster using provided urls map. Currently, it does not support creating
 // cluster with raft learner member.
 func NewClusterFromURLsMap(lg *zap.Logger, token string, urlsmap types.URLsMap) (*RaftCluster, error) {
+
 	c := NewCluster(lg, token)
+
 	for name, urls := range urlsmap {
 		m := NewMember(name, urls, token, nil)
 		if _, ok := c.members[m.ID]; ok {
@@ -82,8 +84,10 @@ func NewClusterFromURLsMap(lg *zap.Logger, token string, urlsmap types.URLsMap) 
 		if uint64(m.ID) == raft.None {
 			return nil, fmt.Errorf("cannot use %x as member id", raft.None)
 		}
+		// zhou: 
 		c.members[m.ID] = m
 	}
+
 	c.genID()
 	return c, nil
 }
@@ -159,6 +163,7 @@ func (c *RaftCluster) MemberByName(name string) *Member {
 	return memb.Clone()
 }
 
+// zhou: list of sorted each member's ID.
 func (c *RaftCluster) MemberIDs() []types.ID {
 	c.Lock()
 	defer c.Unlock()

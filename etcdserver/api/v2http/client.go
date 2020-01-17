@@ -51,8 +51,11 @@ const (
 	statsPrefix    = "/v2/stats"
 )
 
+// zhou: entry for etcd server to handle http request.
+
 // NewClientHandler generates a muxed http.Handler with the given parameters to serve etcd client requests.
 func NewClientHandler(lg *zap.Logger, server etcdserver.ServerPeer, timeout time.Duration) http.Handler {
+
 	mux := http.NewServeMux()
 	etcdhttp.HandleBasic(mux, server)
 	handleV2(lg, mux, server, timeout)
@@ -60,7 +63,10 @@ func NewClientHandler(lg *zap.Logger, server etcdserver.ServerPeer, timeout time
 }
 
 func handleV2(lg *zap.Logger, mux *http.ServeMux, server etcdserver.ServerV2, timeout time.Duration) {
+
 	sec := v2auth.NewStore(lg, server, timeout)
+
+	// zhou: key-value handler
 	kh := &keysHandler{
 		lg:                    lg,
 		sec:                   sec,
@@ -70,11 +76,13 @@ func handleV2(lg *zap.Logger, mux *http.ServeMux, server etcdserver.ServerV2, ti
 		clientCertAuthEnabled: server.ClientCertAuthEnabled(),
 	}
 
+	// zhou: cluster state query handler
 	sh := &statsHandler{
 		lg:    lg,
 		stats: server,
 	}
 
+	// zhou: cluster membership admin handler
 	mh := &membersHandler{
 		lg:                    lg,
 		sec:                   sec,
@@ -85,14 +93,18 @@ func handleV2(lg *zap.Logger, mux *http.ServeMux, server etcdserver.ServerV2, ti
 		clientCertAuthEnabled: server.ClientCertAuthEnabled(),
 	}
 
+	// zhou: 
 	mah := &machinesHandler{cluster: server.Cluster()}
 
+	// zhou: 
 	sech := &authHandler{
 		lg:                    lg,
 		sec:                   sec,
 		cluster:               server.Cluster(),
 		clientCertAuthEnabled: server.ClientCertAuthEnabled(),
 	}
+
+	// zhou: different url path use different handler
 	mux.HandleFunc("/", http.NotFound)
 	mux.Handle(keysPrefix, kh)
 	mux.Handle(keysPrefix+"/", kh)
@@ -114,7 +126,9 @@ type keysHandler struct {
 	clientCertAuthEnabled bool
 }
 
+// zhou: only need to implement this method, the response need to write in "http.ResponseWriter"
 func (h *keysHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
 	if !allowMethod(w, r.Method, "HEAD", "GET", "PUT", "POST", "DELETE") {
 		return
 	}
@@ -123,6 +137,7 @@ func (h *keysHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), h.timeout)
 	defer cancel()
+
 	clock := clockwork.NewRealClock()
 	startTime := clock.Now()
 	rr, noValueOnSuccess, err := parseKeyRequest(r, clock)
@@ -138,13 +153,18 @@ func (h *keysHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !rr.Wait {
 		reportRequestReceived(rr)
 	}
+
+	// zhou: interface defined in ./etcdserver/server.go, implementation in ./etcdserver/v2_server.go
+	//       EtcdServer.Do()
 	resp, err := h.server.Do(ctx, rr)
+
 	if err != nil {
 		err = trimErrorPrefix(err, etcdserver.StoreKeysPrefix)
 		writeKeyError(h.lg, w, err)
 		reportRequestFailed(rr, err)
 		return
 	}
+
 	switch {
 	case resp.Event != nil:
 		if err := writeKeyEvent(w, resp, noValueOnSuccess); err != nil {
@@ -187,7 +207,9 @@ type membersHandler struct {
 	clientCertAuthEnabled bool
 }
 
+// zhou: handle cluster member admin request.
 func (h *membersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
 	if !allowMethod(w, r.Method, "GET", "POST", "DELETE", "PUT") {
 		return
 	}
@@ -201,7 +223,10 @@ func (h *membersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	switch r.Method {
+
 	case "GET":
+		// zhou: get member list
+
 		switch trimPrefix(r.URL.Path, membersPrefix) {
 		case "":
 			mc := newMemberCollection(h.cluster.Members())
@@ -213,7 +238,10 @@ func (h *membersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					plog.Warningf("failed to encode members response (%v)", err)
 				}
 			}
+
 		case "leader":
+			// zhou: get cluster leader
+
 			id := h.server.Leader()
 			if id == 0 {
 				writeError(h.lg, w, r, httptypes.NewHTTPError(http.StatusServiceUnavailable, "During election"))
@@ -233,6 +261,8 @@ func (h *membersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case "POST":
+		// zhou: add cluster member
+
 		req := httptypes.MemberCreateRequest{}
 		if ok := unmarshalRequest(h.lg, r, &req, w); !ok {
 			return
@@ -269,6 +299,8 @@ func (h *membersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case "DELETE":
+		// zhou: remove cluster member
+
 		id, ok := getID(h.lg, r.URL.Path, w)
 		if !ok {
 			return
@@ -295,6 +327,8 @@ func (h *membersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 
 	case "PUT":
+		// zhou: update cluster member
+
 		id, ok := getID(h.lg, r.URL.Path, w)
 		if !ok {
 			return

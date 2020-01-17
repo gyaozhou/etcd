@@ -47,9 +47,13 @@ type Attributes struct {
 
 type Member struct {
 	ID types.ID `json:"id"`
+	// zhou: URLs of the peer member
 	RaftAttributes
+	// zhou: name of the peer member
 	Attributes
 }
+
+// zhou:
 
 // NewMember creates a Member without an ID and generates one based on the
 // cluster name, peer URLs, and time. This is used for bootstrapping/adding new member.
@@ -72,6 +76,7 @@ func newMember(name string, peerURLs types.URLs, clusterName string, now *time.T
 		Attributes: Attributes{Name: name},
 	}
 
+	// zhou: "b" just used for generating a ID for this Peer Node and by SHA1.
 	var b []byte
 	sort.Strings(m.PeerURLs)
 	for _, p := range m.PeerURLs {
@@ -84,7 +89,10 @@ func newMember(name string, peerURLs types.URLs, clusterName string, now *time.T
 	}
 
 	hash := sha1.Sum(b)
+
+	// zhou: length cut down to 8.
 	m.ID = types.ID(binary.BigEndian.Uint64(hash[:8]))
+
 	return m
 }
 

@@ -69,11 +69,13 @@ const (
 // Etcd contains a running etcd server and its listeners.
 type Etcd struct {
 	Peers   []*peerListener
+
 	Clients []net.Listener
 	// a map of contexts for the servers that serves client requests.
 	sctxs            map[string]*serveCtx
 	metricsListeners []net.Listener
 
+	// zhou: refer to etcd server
 	Server *etcdserver.EtcdServer
 
 	cfg   Config
@@ -89,16 +91,21 @@ type peerListener struct {
 	close func(context.Context) error
 }
 
+// zhou: etcdmain.startEtcd() invoke this function.
+
 // StartEtcd launches the etcd server and HTTP handlers for client/server communication.
 // The returned Etcd.Server is not guaranteed to have joined the cluster. Wait
 // on the Etcd.Server.ReadyNotify() channel to know when it completes and is ready for use.
 func StartEtcd(inCfg *Config) (e *Etcd, err error) {
+
 	if err = inCfg.Validate(); err != nil {
 		return nil, err
 	}
+
 	serving := false
 	e = &Etcd{cfg: *inCfg, stopc: make(chan struct{})}
 	cfg := &e.cfg
+
 	defer func() {
 		if e == nil || err == nil {
 			return
@@ -119,6 +126,8 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 			zap.Strings("listen-peer-urls", e.cfg.getLPURLs()),
 		)
 	}
+
+	// zhou: setup listener to peer nodes 
 	if e.Peers, err = configurePeerListeners(cfg); err != nil {
 		return e, err
 	}
@@ -129,6 +138,8 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 			zap.Strings("listen-client-urls", e.cfg.getLCURLs()),
 		)
 	}
+
+	// zhou: setup listener to clients
 	if e.sctxs, err = configureClientListeners(cfg); err != nil {
 		return e, err
 	}
@@ -141,6 +152,8 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 		urlsmap types.URLsMap
 		token   string
 	)
+
+	// zhou: when new Etcd Server, memberInitialized==false
 	memberInitialized := true
 	if !isMemberInitialized(cfg) {
 		memberInitialized = false
@@ -161,6 +174,7 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 
 	backendFreelistType := parseBackendFreelistType(cfg.BackendFreelistType)
 
+	// zhou:
 	srvcfg := etcdserver.ServerConfig{
 		Name:                       cfg.Name,
 		ClientURLs:                 cfg.ACUrls,
@@ -207,7 +221,10 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 		EnableLeaseCheckpoint:      cfg.ExperimentalEnableLeaseCheckpoint,
 		CompactionBatchLimit:       cfg.ExperimentalCompactionBatchLimit,
 	}
+	
 	print(e.cfg.logger, *cfg, srvcfg, memberInitialized)
+
+	// zhou: normal path, create cluster member instance
 	if e.Server, err = etcdserver.NewServer(srvcfg); err != nil {
 		return e, err
 	}
@@ -225,8 +242,11 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 			return e, err
 		}
 	}
+	
+	// zhou: start "etcd" server, will not block
 	e.Server.Start()
 
+	// zhou: ???
 	if err = e.servePeers(); err != nil {
 		return e, err
 	}
@@ -397,6 +417,7 @@ func (e *Etcd) Close() {
 
 	// close rafthttp transports
 	if e.Server != nil {
+		// zhou:
 		e.Server.Stop()
 	}
 
@@ -450,9 +471,11 @@ func stopServers(ctx context.Context, ss *servers) {
 func (e *Etcd) Err() <-chan error { return e.errc }
 
 func configurePeerListeners(cfg *Config) (peers []*peerListener, err error) {
+
 	if err = updateCipherSuites(&cfg.PeerTLSInfo, cfg.CipherSuites); err != nil {
 		return nil, err
 	}
+
 	if err = cfg.PeerSelfCert(); err != nil {
 		if cfg.logger != nil {
 			cfg.logger.Fatal("failed to get peer self-signed certs", zap.Error(err))
@@ -513,6 +536,7 @@ func configurePeerListeners(cfg *Config) (peers []*peerListener, err error) {
 			}
 		}
 		peers[i] = &peerListener{close: func(context.Context) error { return nil }}
+		// zhou: 
 		peers[i].Listener, err = rafthttp.NewListener(u, &cfg.PeerTLSInfo)
 		if err != nil {
 			return nil, err
@@ -527,6 +551,7 @@ func configurePeerListeners(cfg *Config) (peers []*peerListener, err error) {
 
 // configure peer handlers after rafthttp.Transport started
 func (e *Etcd) servePeers() (err error) {
+
 	ph := etcdhttp.NewPeerHandler(e.GetLogger(), e.Server)
 	var peerTLScfg *tls.Config
 	if !e.cfg.PeerTLSInfo.Empty() {
@@ -536,6 +561,7 @@ func (e *Etcd) servePeers() (err error) {
 	}
 
 	for _, p := range e.Peers {
+
 		u := p.Listener.Addr().String()
 		gs := v3rpc.Server(e.Server, peerTLScfg)
 		m := cmux.New(p.Listener)
@@ -570,6 +596,7 @@ func (e *Etcd) servePeers() (err error) {
 
 	// start peer servers in a goroutine
 	for _, pl := range e.Peers {
+
 		go func(l *peerListener) {
 			u := l.Addr().String()
 			if e.cfg.logger != nil {
@@ -587,6 +614,7 @@ func (e *Etcd) servePeers() (err error) {
 }
 
 func configureClientListeners(cfg *Config) (sctxs map[string]*serveCtx, err error) {
+
 	if err = updateCipherSuites(&cfg.ClientTLSInfo, cfg.CipherSuites); err != nil {
 		return nil, err
 	}
@@ -703,6 +731,7 @@ func configureClientListeners(cfg *Config) (sctxs map[string]*serveCtx, err erro
 }
 
 func (e *Etcd) serveClients() (err error) {
+
 	if !e.cfg.ClientTLSInfo.Empty() {
 		if e.cfg.logger != nil {
 			e.cfg.logger.Info(
@@ -718,13 +747,17 @@ func (e *Etcd) serveClients() (err error) {
 	// Start a client server goroutine for each listen address
 	var h http.Handler
 	if e.Config().EnableV2 {
+
 		if len(e.Config().ExperimentalEnableV2V3) > 0 {
 			srv := v2v3.NewServer(e.cfg.logger, v3client.New(e.Server), e.cfg.ExperimentalEnableV2V3)
 			h = v2http.NewClientHandler(e.GetLogger(), srv, e.Server.Cfg.ReqTimeout())
 		} else {
+			// zhou: 
 			h = v2http.NewClientHandler(e.GetLogger(), e.Server, e.Server.Cfg.ReqTimeout())
 		}
+
 	} else {
+
 		mux := http.NewServeMux()
 		etcdhttp.HandleBasic(mux, e.Server)
 		h = mux
@@ -754,6 +787,7 @@ func (e *Etcd) serveClients() (err error) {
 	return nil
 }
 
+// zhou: ???
 func (e *Etcd) serveMetrics() (err error) {
 	if e.cfg.Metrics == "extensive" {
 		grpc_prometheus.EnableHandlingTimeHistogram()

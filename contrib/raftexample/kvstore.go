@@ -26,9 +26,11 @@ import (
 
 // a key-value store backed by raft
 type kvstore struct {
+	// zhou: used to sending
 	proposeC    chan<- string // channel for proposing updates
 	mu          sync.RWMutex
 	kvStore     map[string]string // current committed key-value pairs
+	// zhou: snapshot?
 	snapshotter *snap.Snapshotter
 }
 
@@ -37,12 +39,17 @@ type kv struct {
 	Val string
 }
 
+// zhou: 
 func newKVStore(snapshotter *snap.Snapshotter, proposeC chan<- string, commitC <-chan *string, errorC <-chan error) *kvstore {
+
 	s := &kvstore{proposeC: proposeC, kvStore: make(map[string]string), snapshotter: snapshotter}
+
 	// replay log into key-value map
 	s.readCommits(commitC, errorC)
+
 	// read commits from raft into kvStore map until error
 	go s.readCommits(commitC, errorC)
+
 	return s
 }
 
@@ -61,7 +68,9 @@ func (s *kvstore) Propose(k string, v string) {
 	s.proposeC <- buf.String()
 }
 
+// zhou: 
 func (s *kvstore) readCommits(commitC <-chan *string, errorC <-chan error) {
+
 	for data := range commitC {
 		if data == nil {
 			// done replaying log; new data incoming

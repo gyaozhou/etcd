@@ -53,12 +53,15 @@ var (
 	dirEmpty  = dirType("empty")
 )
 
+// zhou: binary 'etcd' run in core mode or proxy mode
 func startEtcdOrProxyV2() {
 	grpc.EnableTracing = false
 
+	// zhou: set up cli descriptors and instance of config object.
 	cfg := newConfig()
 	defaultInitialCluster := cfg.ec.InitialCluster
 
+	// zhou: 
 	err := cfg.parse(os.Args[1:])
 	lg := cfg.ec.GetLogger()
 	if err != nil {
@@ -94,6 +97,7 @@ func startEtcdOrProxyV2() {
 		}
 	}()
 
+
 	defaultHost, dhErr := (&cfg.ec).UpdateDefaultClusterFromName(defaultInitialCluster)
 	if defaultHost != "" {
 		if lg != nil {
@@ -125,10 +129,15 @@ func startEtcdOrProxyV2() {
 		}
 	}
 
+////////////////////////////////////////////////////////////////////////////////
+
 	var stopped <-chan struct{}
 	var errc <-chan error
 
+	// zhou: check are there existing "member" or "proxy" file, which generated 
+	//       before restarting.
 	which := identifyDataDirOrDie(cfg.ec.GetLogger(), cfg.ec.Dir)
+
 	if which != dirEmpty {
 		if lg != nil {
 			lg.Info(
@@ -155,10 +164,16 @@ func startEtcdOrProxyV2() {
 			}
 		}
 	} else {
+		// zhou: once there is no valid existing file, this node should be new one.
+		//       Then checking mode by cli argument.
+
 		shouldProxy := cfg.isProxy()
+
 		if !shouldProxy {
 			stopped, errc, err = startEtcd(&cfg.ec)
 			if derr, ok := err.(*etcdserver.DiscoveryError); ok && derr.Err == v2discovery.ErrFullCluster {
+				// zhou: when discovery service failed, fallback behavior.
+				//       Set by "--discovery-fallback"
 				if cfg.shouldFallbackToProxy() {
 					if lg != nil {
 						lg.Warn(
@@ -169,6 +184,7 @@ func startEtcdOrProxyV2() {
 					} else {
 						plog.Noticef("discovery cluster full, falling back to %s", fallbackFlagProxy)
 					}
+					// zhou: fallback to proxy when new node.
 					shouldProxy = true
 				}
 			} else if err != nil {
@@ -177,13 +193,17 @@ func startEtcdOrProxyV2() {
 				}
 			}
 		}
+
 		if shouldProxy {
 			err = startProxy(cfg)
 		}
 	}
 
+	// zhou: after startProxy()/startEtcd()
 	if err != nil {
+
 		if derr, ok := err.(*etcdserver.DiscoveryError); ok {
+
 			switch derr.Err {
 			case v2discovery.ErrDuplicateID:
 				if lg != nil {
@@ -244,6 +264,7 @@ func startEtcdOrProxyV2() {
 			} else {
 				plog.Infof("%v", err)
 			}
+
 			if cfg.ec.InitialCluster == cfg.ec.InitialClusterFromName(cfg.ec.Name) {
 				if lg != nil {
 					lg.Warn("forgot to set --initial-cluster?")
@@ -251,6 +272,7 @@ func startEtcdOrProxyV2() {
 					plog.Infof("forgot to set --initial-cluster flag?")
 				}
 			}
+
 			if types.URLs(cfg.ec.APUrls).String() == embed.DefaultInitialAdvertisePeerURLs {
 				if lg != nil {
 					lg.Warn("forgot to set --initial-advertise-peer-urls?")
@@ -258,6 +280,7 @@ func startEtcdOrProxyV2() {
 					plog.Infof("forgot to set --initial-advertise-peer-urls flag?")
 				}
 			}
+
 			if cfg.ec.InitialCluster == cfg.ec.InitialClusterFromName(cfg.ec.Name) && len(cfg.ec.Durl) == 0 {
 				if lg != nil {
 					lg.Warn("--discovery flag is not set")
@@ -267,6 +290,7 @@ func startEtcdOrProxyV2() {
 			}
 			os.Exit(1)
 		}
+
 		if lg != nil {
 			lg.Fatal("discovery failed", zap.Error(err))
 		} else {
@@ -283,6 +307,7 @@ func startEtcdOrProxyV2() {
 	// connections.
 	notifySystemd(lg)
 
+	// zhou: the goroutine block here for exiting.
 	select {
 	case lerr := <-errc:
 		// fatal out on listener errors
@@ -297,17 +322,23 @@ func startEtcdOrProxyV2() {
 	osutil.Exit(0)
 }
 
+// zhou: this function will block until this node join cluster or failure.
+
 // startEtcd runs StartEtcd in addition to hooks needed for standalone etcd.
 func startEtcd(cfg *embed.Config) (<-chan struct{}, <-chan error, error) {
+
 	e, err := embed.StartEtcd(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
+
 	osutil.RegisterInterruptHandler(e.Close)
+
 	select {
 	case <-e.Server.ReadyNotify(): // wait for e.Server to join the cluster
 	case <-e.Server.StopNotify(): // publish aborted from 'ErrStopped'
 	}
+
 	return e.Server.StopNotify(), e.Err(), nil
 }
 
@@ -550,9 +581,13 @@ func startProxy(cfg *config) error {
 	return nil
 }
 
+// zhou: check files in data dir to identify in "member" or "proxy" mode.
+//       I suppose it used in restarting.
+
 // identifyDataDirOrDie returns the type of the data dir.
 // Dies if the datadir is invalid.
 func identifyDataDirOrDie(lg *zap.Logger, dir string) dirType {
+
 	names, err := fileutil.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {

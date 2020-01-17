@@ -22,6 +22,8 @@ import (
 	"sync"
 )
 
+// zhou: Logger used for trace file.
+
 type Logger interface {
 	Debug(v ...interface{})
 	Debugf(format string, v ...interface{})

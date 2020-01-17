@@ -52,6 +52,8 @@ func Start() {
 		cli.DurationFlag{Name: "timeout", Value: 2 * time.Second, Usage: "connection timeout per request"},
 		cli.DurationFlag{Name: "total-timeout", Value: 5 * time.Second, Usage: "timeout for the command execution (except watch)"},
 	}
+
+	// zhou: 
 	app.Commands = []cli.Command{
 		command.NewBackupCommand(),
 		command.NewClusterHealthCommand(),

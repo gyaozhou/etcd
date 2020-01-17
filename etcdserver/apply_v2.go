@@ -1,5 +1,5 @@
 // Copyright 2016 The etcd Authors
-//
+n//
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -106,6 +106,8 @@ func (a *applierV2store) Sync(r *RequestV2) Response {
 	a.store.DeleteExpiredKeys(time.Unix(0, r.Time))
 	return Response{}
 }
+
+// zhou: execute key-value
 
 // applyV2Request interprets r as a call to v2store.X
 // and returns a Response interpreted from v2store.Event

@@ -34,3 +34,8 @@ vendor/**/*
 vendor/**/*_test.go
 
 *.bak
+
+TAGS
+cscope.files
+cscope.out
+.DS_Store

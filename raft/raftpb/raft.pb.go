@@ -45,6 +45,7 @@ const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
 
 type EntryType int32
 
+// zhou: two types of message.
 const (
 	EntryNormal       EntryType = 0
 	EntryConfChange   EntryType = 1
@@ -82,6 +83,7 @@ func (EntryType) EnumDescriptor() ([]byte, []int) { return fileDescriptorRaft, [
 
 type MessageType int32
 
+// zhou: message type
 const (
 	MsgHup            MessageType = 0
 	MsgBeat           MessageType = 1
@@ -348,6 +350,7 @@ func (m *ConfState) String() string            { return proto.CompactTextString(
 func (*ConfState) ProtoMessage()               {}
 func (*ConfState) Descriptor() ([]byte, []int) { return fileDescriptorRaft, []int{5} }
 
+// zhou:
 type ConfChange struct {
 	Type    ConfChangeType `protobuf:"varint,2,opt,name=type,enum=raftpb.ConfChangeType" json:"type"`
 	NodeID  uint64         `protobuf:"varint,3,opt,name=node_id,json=nodeId" json:"node_id"`
@@ -436,6 +439,7 @@ func init() {
 	proto.RegisterEnum("raftpb.ConfChangeTransition", ConfChangeTransition_name, ConfChangeTransition_value)
 	proto.RegisterEnum("raftpb.ConfChangeType", ConfChangeType_name, ConfChangeType_value)
 }
+
 func (m *Entry) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)

@@ -14,6 +14,8 @@
 
 package etcdserver
 
+// zhou: etcdserver/server.go -> etcdserver/raft.go -> raft/raft.go
+
 import (
 	"context"
 	"encoding/json"
@@ -98,6 +100,7 @@ const (
 	// maxPendingRevokes is the maximum number of outstanding expired lease revocations.
 	maxPendingRevokes = 16
 
+	// zhou: system defined recommend Max Client Request bytes, could be overwrite by customer
 	recommendedMaxRequestBytes = 10 * 1024 * 1024
 
 	readyPercent = 0.9
@@ -135,6 +138,7 @@ type ServerV2 interface {
 	Server
 	Leader() types.ID
 
+	// zhou: 
 	// Do takes a V2 request and attempts to fulfill it, returning a Response.
 	Do(ctx context.Context, r pb.Request) (Response, error)
 	stats.Stats
@@ -184,6 +188,8 @@ type Server interface {
 	Cluster() api.Cluster
 	Alarms() []*pb.AlarmMember
 }
+
+// zhou: "EtcdServer" is a implementation of "type Raft interface" defined in "api/rafthttp/transport.go"
 
 // EtcdServer is the production implementation of the Server interface
 type EtcdServer struct {
@@ -283,9 +289,13 @@ type EtcdServer struct {
 	*AccessController
 }
 
+// zhou:
+
 // NewServer creates a new EtcdServer from the supplied configuration. The
 // configuration is considered static for the lifetime of the EtcdServer.
 func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
+	
+	// zhou: key-value storage
 	st := v2store.New(StoreClusterPrefix, StoreKeysPrefix)
 
 	var (
@@ -310,12 +320,15 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 		}
 	}
 
+	// zhou: create data directory if not exist.
 	if terr := fileutil.TouchDirAll(cfg.DataDir); terr != nil {
 		return nil, fmt.Errorf("cannot access data directory: %v", terr)
 	}
-
+	
+	// zhou: any existing WAL files
 	haveWAL := wal.Exist(cfg.WALDir())
 
+	// zhou: create snap directory if not exist
 	if err = fileutil.TouchDirAll(cfg.SnapDir()); err != nil {
 		if cfg.Logger != nil {
 			cfg.Logger.Fatal(
@@ -327,8 +340,11 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 			plog.Fatalf("create snapshot directory error: %v", err)
 		}
 	}
+
+	// zhou: create Snapshootter object which used to handle Snap.
 	ss := snap.New(cfg.Logger, cfg.SnapDir())
 
+	// zhou: MVCC store, introduced by V3?
 	bepath := cfg.backendPath()
 	beExist := fileutil.Exist(bepath)
 	be := openBackend(cfg)
@@ -339,10 +355,12 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 		}
 	}()
 
+	// zhou: returns a roundTripper used to send requests to rafthttp listener of remote peers.
 	prt, err := rafthttp.NewRoundTripper(cfg.PeerTLSInfo, cfg.peerDialTimeout())
 	if err != nil {
 		return nil, err
 	}
+
 	var (
 		remotes  []*membership.Member
 		snapshot *raftpb.Snapshot
@@ -369,6 +387,7 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 		}
 
 		remotes = existingCluster.Members()
+
 		cl.SetID(types.ID(0), existingCluster.ID())
 		cl.SetStore(st)
 		cl.SetBackend(be)
@@ -376,17 +395,24 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 		cl.SetID(id, existingCluster.ID())
 
 	case !haveWAL && cfg.NewCluster:
+		// zhou: normal path
+
 		if err = cfg.VerifyBootstrap(); err != nil {
 			return nil, err
 		}
+		// zhou: get cluster via cli info.
 		cl, err = membership.NewClusterFromURLsMap(cfg.Logger, cfg.InitialClusterToken, cfg.InitialPeerURLsMap)
 		if err != nil {
 			return nil, err
 		}
+
+		// zhou: get this member
 		m := cl.MemberByName(cfg.Name)
 		if isMemberBootstrapped(cfg.Logger, cl, cfg.Name, prt, cfg.bootstrapTimeout()) {
 			return nil, fmt.Errorf("member %s has already been bootstrapped", m.ID)
 		}
+
+		
 		if cfg.ShouldDiscover() {
 			var str string
 			str, err = v2discovery.JoinCluster(cfg.Logger, cfg.DiscoveryURL, cfg.DiscoveryProxy, m.ID, cfg.InitialPeerURLsMap.String())
@@ -405,10 +431,14 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 				return nil, err
 			}
 		}
+
 		cl.SetStore(st)
 		cl.SetBackend(be)
+		
+		// zhou: normal path, create new cluster member
 		id, n, s, w = startNode(cfg, cl, cl.MemberIDs())
 		cl.SetID(id, cl.ID())
+
 
 	case haveWAL:
 		if err = fileutil.IsDirWriteable(cfg.MemberDir()); err != nil {
@@ -429,6 +459,9 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 				plog.Warningf("discovery token ignored since a cluster has already been initialized. Valid log found at %q", cfg.WALDir())
 			}
 		}
+
+		// zhou: read snap file->raftpb->Memory Storage.
+		//       Snapshotter.Load() in etcdserver/api/snap/snapshotter.go
 		snapshot, err = ss.Load()
 		if err != nil && err != snap.ErrNoSnapshot {
 			return nil, err
@@ -471,6 +504,10 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 			}
 		}
 
+		
+		// zhou: s: Raft/MemoryStorage, n: Raft/node
+		//       etcdserver/raft.go
+
 		if !cfg.ForceNewCluster {
 			id, cl, n, s, w = restartNode(cfg, snapshot)
 		} else {
@@ -489,6 +526,8 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 		return nil, fmt.Errorf("unsupported bootstrap config")
 	}
 
+
+
 	if terr := fileutil.TouchDirAll(cfg.MemberDir()); terr != nil {
 		return nil, fmt.Errorf("cannot access member directory: %v", terr)
 	}
@@ -497,6 +536,8 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 	lstats := stats.NewLeaderStats(id.String())
 
 	heartbeat := time.Duration(cfg.TickMs) * time.Millisecond
+
+	// zhou: 
 	srv = &EtcdServer{
 		readych:     make(chan struct{}),
 		Cfg:         cfg,
@@ -505,6 +546,8 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 		errorc:      make(chan error, 1),
 		v2store:     st,
 		snapshotter: ss,
+		
+		// zhou: etcdserver/raft.go, get "raftNode" defined by etcdserver/raft.go
 		r: *newRaftNode(
 			raftNodeConfig{
 				lg:          cfg.Logger,
@@ -515,6 +558,7 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 				storage:     NewStorage(w, ss),
 			},
 		),
+
 		id:               id,
 		attributes:       membership.Attributes{Name: cfg.Name, ClientURLs: cfg.ClientURLs.StringSlice()},
 		cluster:          cl,
@@ -544,6 +588,7 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 			ExpiredLeasesRetryInterval: srv.Cfg.ReqTimeout(),
 		})
 	srv.kv = mvcc.New(srv.getLogger(), srv.be, srv.lessor, &srv.consistIndex, mvcc.StoreConfig{CompactionBatchLimit: cfg.CompactionBatchLimit})
+
 	if beExist {
 		kvindex := srv.kv.ConsistentIndex()
 		// TODO: remove kvindex != 0 checking when we do not expect users to upgrade
@@ -562,7 +607,9 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 			}
 		}
 	}
+
 	newSrv := srv // since srv == nil in defer if srv is returned as nil
+
 	defer func() {
 		// closing backend without first closing kv can cause
 		// resumed compactions to fail with closed tx errors
@@ -632,6 +679,7 @@ func NewServer(cfg ServerConfig) (srv *EtcdServer, err error) {
 	}
 	for _, m := range cl.Members() {
 		if m.ID != id {
+			// zhou: 
 			tr.AddPeer(m.ID, m.PeerURLs)
 		}
 	}
@@ -725,12 +773,17 @@ func (s *EtcdServer) adjustTicks() {
 	}
 }
 
+// zhou: read configuration file, and start server.
+//       Invoked by embed.StartEtcd()
+
 // Start performs any initialization of the Server necessary for it to
 // begin serving requests. It must be called before Do or Process.
 // Start must be non-blocking; any long-running server functionality
 // should be implemented in goroutines.
 func (s *EtcdServer) Start() {
+	
 	s.start()
+
 	s.goAttach(func() { s.adjustTicks() })
 	s.goAttach(func() { s.publish(s.Cfg.ReqTimeout()) })
 	s.goAttach(s.purgeFile)
@@ -744,6 +797,7 @@ func (s *EtcdServer) Start() {
 // modify a server's fields after it has been sent to Start.
 // This function is just used for testing.
 func (s *EtcdServer) start() {
+
 	lg := s.getLogger()
 
 	if s.Cfg.SnapshotCount == 0 {
@@ -778,6 +832,7 @@ func (s *EtcdServer) start() {
 	s.readwaitc = make(chan struct{}, 1)
 	s.readNotifier = newNotifier()
 	s.leaderChanged = make(chan struct{})
+	
 	if s.ClusterVersion() != nil {
 		if lg != nil {
 			lg.Info(
@@ -803,6 +858,8 @@ func (s *EtcdServer) start() {
 			plog.Infof("starting server... [version: %v, cluster version: to_be_decided]", version.Version)
 		}
 	}
+
+	// zhou:
 
 	// TODO: if this is an empty log, writes all peer infos
 	// into the first entry
@@ -873,9 +930,12 @@ func (s *EtcdServer) LeaseHandler() http.Handler {
 
 func (s *EtcdServer) RaftHandler() http.Handler { return s.r.transport.Handler() }
 
+// zhou: process raft message
+
 // Process takes a raft message and applies it to the server's raft state
 // machine, respecting any timeout of the given context.
 func (s *EtcdServer) Process(ctx context.Context, m raftpb.Message) error {
+
 	if s.cluster.IsIDRemoved(types.ID(m.From)) {
 		if lg := s.getLogger(); lg != nil {
 			lg.Warn(
@@ -888,9 +948,13 @@ func (s *EtcdServer) Process(ctx context.Context, m raftpb.Message) error {
 		}
 		return httptypes.NewHTTPError(http.StatusForbidden, "cannot process message from removed member")
 	}
+
+	// zhou: 
 	if m.Type == raftpb.MsgApp {
 		s.stats.RecvAppendReq(types.ID(m.From).String(), m.Size())
 	}
+
+	// zhou: handle recevied message from remote node to Raft lib.
 	return s.r.Step(ctx, m)
 }
 
@@ -904,12 +968,18 @@ func (s *EtcdServer) ReportSnapshot(id uint64, status raft.SnapshotStatus) {
 	s.r.ReportSnapshot(id, status)
 }
 
+// zhou: 
 type etcdProgress struct {
 	confState raftpb.ConfState
+	// zhou: Index
 	snapi     uint64
+	// zhou: Term
 	appliedt  uint64
+	// zhou: Index
 	appliedi  uint64
 }
+
+// zhou: 
 
 // raftReadyHandler contains a set of EtcdServer operations to be called by raftNode,
 // and helps decouple state machine logic from Raft algorithms.
@@ -921,9 +991,12 @@ type raftReadyHandler struct {
 	updateCommittedIndex func(uint64)
 }
 
+// zhou: continue from Start(), core function!!!
 func (s *EtcdServer) run() {
 	lg := s.getLogger()
 
+	// zhou: data recovered from last snapshot. 
+	//       MemoryStorage.Snapshot() -> return pb.Snapshot
 	sn, err := s.r.raftStorage.Snapshot()
 	if err != nil {
 		if lg != nil {
@@ -951,6 +1024,8 @@ func (s *EtcdServer) run() {
 		smu.RUnlock()
 		return
 	}
+
+	// zhou: define a list of function variables.
 	rh := &raftReadyHandler{
 		getLead:    func() (lead uint64) { return s.getLead() },
 		updateLead: func(lead uint64) { s.setLead(lead) },
@@ -995,8 +1070,11 @@ func (s *EtcdServer) run() {
 			}
 		},
 	}
+
+	// zhou: start Raft node.
 	s.r.start(rh)
 
+	// zhou: init with last snap in disk.
 	ep := etcdProgress{
 		confState: sn.Metadata.ConfState,
 		snapi:     sn.Metadata.Index,
@@ -1004,6 +1082,7 @@ func (s *EtcdServer) run() {
 		appliedi:  sn.Metadata.Index,
 	}
 
+	// zhou: deferred clean up work.
 	defer func() {
 		s.wgMu.Lock() // block concurrent waitgroup adds in goAttach while stopping
 		close(s.stopping)
@@ -1041,17 +1120,26 @@ func (s *EtcdServer) run() {
 		close(s.done)
 	}()
 
+
 	var expiredLeaseC <-chan []*lease.Lease
 	if s.lessor != nil {
 		expiredLeaseC = s.lessor.ExpiredLeasesC()
 	}
 
+	// zhou: loop 
 	for {
 		select {
+
 		case ap := <-s.r.apply():
+			// zhou: Raft said more than half nodes confirmed the Propose and saved in WAL.
+
+			// zhou: execute "s.applyAll()" later in FIFO
 			f := func(context.Context) { s.applyAll(&ep, &ap) }
 			sched.Schedule(f)
+
 		case leases := <-expiredLeaseC:
+			// zhou:
+
 			s.goAttach(func() {
 				// Increases throughput of expired leases deletion process through parallelization
 				c := make(chan struct{}, maxPendingRevokes)
@@ -1083,6 +1171,7 @@ func (s *EtcdServer) run() {
 					})
 				}
 			})
+
 		case err := <-s.errorc:
 			if lg != nil {
 				lg.Warn("server error", zap.Error(err))
@@ -1092,18 +1181,25 @@ func (s *EtcdServer) run() {
 				plog.Infof("the data-dir used by this member must be removed.")
 			}
 			return
+
 		case <-getSyncC():
 			if s.v2store.HasTTLKeys() {
 				s.sync(s.Cfg.ReqTimeout())
 			}
+
 		case <-s.stop:
 			return
 		}
 	}
 }
 
+// zhou: Propose could be committed and apply to state machine (Key-Value database, in this case)
 func (s *EtcdServer) applyAll(ep *etcdProgress, apply *apply) {
+
+	// zhou: dose "apply" includes snapshot data, recover store with it.???
 	s.applySnapshot(ep, apply)
+
+	// zhou: normal path 
 	s.applyEntries(ep, apply)
 
 	proposalsApplied.Set(float64(ep.appliedi))
@@ -1125,6 +1221,7 @@ func (s *EtcdServer) applyAll(ep *etcdProgress, apply *apply) {
 }
 
 func (s *EtcdServer) applySnapshot(ep *etcdProgress, apply *apply) {
+
 	if raft.IsEmptySnap(apply.snapshot) {
 		return
 	}
@@ -1356,7 +1453,9 @@ func (s *EtcdServer) applySnapshot(ep *etcdProgress, apply *apply) {
 	ep.confState = apply.snapshot.Metadata.ConfState
 }
 
+// zhou: to be read
 func (s *EtcdServer) applyEntries(ep *etcdProgress, apply *apply) {
+
 	if len(apply.entries) == 0 {
 		return
 	}
@@ -1372,6 +1471,7 @@ func (s *EtcdServer) applyEntries(ep *etcdProgress, apply *apply) {
 			plog.Panicf("first index of committed entry[%d] should <= appliedi[%d] + 1", firsti, ep.appliedi)
 		}
 	}
+
 	var ents []raftpb.Entry
 	if ep.appliedi+1-firsti < uint64(len(apply.entries)) {
 		ents = apply.entries[ep.appliedi+1-firsti:]
@@ -1379,7 +1479,9 @@ func (s *EtcdServer) applyEntries(ep *etcdProgress, apply *apply) {
 	if len(ents) == 0 {
 		return
 	}
+
 	var shouldstop bool
+	// zhou: 
 	if ep.appliedt, ep.appliedi, shouldstop = s.apply(ents, &ep.confState); shouldstop {
 		go s.stopWithDelay(10*100*time.Millisecond, fmt.Errorf("the member has been permanently removed from the cluster"))
 	}
@@ -1508,6 +1610,8 @@ func (s *EtcdServer) HardStop() {
 	<-s.done
 }
 
+// zhou: not sure when to stop a etcd node.
+
 // Stop stops the server gracefully, and shuts down the running goroutine.
 // Stop should be called after a Start(s), otherwise it will block forever.
 // When stopping leader, Stop transfers its leadership to one of its peers
@@ -1525,6 +1629,7 @@ func (s *EtcdServer) Stop() {
 	s.HardStop()
 }
 
+// zhou: 
 // ReadyNotify returns a channel that will be closed when the server
 // is ready to serve client requests
 func (s *EtcdServer) ReadyNotify() <-chan struct{} { return s.readych }
@@ -1540,6 +1645,7 @@ func (s *EtcdServer) stopWithDelay(d time.Duration, err error) {
 	}
 }
 
+// zhou: 
 // StopNotify returns a channel that receives a empty struct
 // when the server is stopped.
 func (s *EtcdServer) StopNotify() <-chan struct{} { return s.done }
@@ -1576,6 +1682,8 @@ func (s *EtcdServer) checkMembershipOperationPermission(ctx context.Context) err
 
 	return s.AuthStore().IsAdminPermitted(authInfo)
 }
+
+// zhou: add a node to cluster, the node should own unique id
 
 func (s *EtcdServer) AddMember(ctx context.Context, memb membership.Member) ([]*membership.Member, error) {
 	if err := s.checkMembershipOperationPermission(ctx); err != nil {
@@ -1643,6 +1751,7 @@ func (s *EtcdServer) mayAddMember(memb membership.Member) error {
 	return nil
 }
 
+// zhou: remove a node from cluster
 func (s *EtcdServer) RemoveMember(ctx context.Context, id uint64) ([]*membership.Member, error) {
 	if err := s.checkMembershipOperationPermission(ctx); err != nil {
 		return nil, err
@@ -1850,6 +1959,7 @@ func (s *EtcdServer) mayRemoveMember(id types.ID) error {
 	return nil
 }
 
+// zhou: update cluster member's attribute
 func (s *EtcdServer) UpdateMember(ctx context.Context, memb membership.Member) ([]*membership.Member, error) {
 	b, merr := json.Marshal(memb)
 	if merr != nil {
@@ -1914,6 +2024,7 @@ type RaftStatusGetter interface {
 	Term() uint64
 }
 
+// zhou: fetch information
 func (s *EtcdServer) ID() types.ID { return s.id }
 
 func (s *EtcdServer) Leader() types.ID { return types.ID(s.getLead()) }
@@ -1930,6 +2041,8 @@ type confChangeResponse struct {
 	membs []*membership.Member
 	err   error
 }
+
+// zhou: will invoke Raft.Node.ProposeConfChange() to let Raft library handle member change.
 
 // configure sends a configuration change through consensus and
 // then waits for it to be applied to the server. It
@@ -2069,19 +2182,23 @@ func (s *EtcdServer) publish(timeout time.Duration) {
 		}
 		return
 	}
+
 	req := pb.Request{
 		Method: "PUT",
 		Path:   membership.MemberAttributesStorePath(s.id),
 		Val:    string(b),
 	}
 
+	// zhou: 
 	for {
 		ctx, cancel := context.WithTimeout(s.ctx, timeout)
 		_, err := s.Do(ctx, req)
 		cancel()
 		switch err {
 		case nil:
+			// zhou: Etcd Server is ready for use.
 			close(s.readych)
+
 			if lg := s.getLogger(); lg != nil {
 				lg.Info(
 					"published local member to cluster through raft",
@@ -2173,6 +2290,8 @@ func (s *EtcdServer) sendMergedSnap(merged snap.Message) {
 	})
 }
 
+// zhou:
+
 // apply takes entries received from Raft (after it has been committed) and
 // applies them to the current state of the EtcdServer.
 // The given entries should not be empty.
@@ -2180,15 +2299,21 @@ func (s *EtcdServer) apply(
 	es []raftpb.Entry,
 	confState *raftpb.ConfState,
 ) (appliedt uint64, appliedi uint64, shouldStop bool) {
+
 	for i := range es {
 		e := es[i]
 		switch e.Type {
+
 		case raftpb.EntryNormal:
+			// zhou: normal state machine operation (key-value store here)
+
 			s.applyEntryNormal(&e)
 			s.setAppliedIndex(e.Index)
 			s.setTerm(e.Term)
 
 		case raftpb.EntryConfChange:
+			// zhou: Raft configuration change.
+
 			// set the consistent index of current executing entry
 			if e.Index > s.consistIndex.ConsistentIndex() {
 				s.consistIndex.setConsistentIndex(e.Index)
@@ -2216,8 +2341,11 @@ func (s *EtcdServer) apply(
 	return appliedt, appliedi, shouldStop
 }
 
+// zhou:
+
 // applyEntryNormal apples an EntryNormal type raftpb request to the EtcdServer
 func (s *EtcdServer) applyEntryNormal(e *raftpb.Entry) {
+
 	shouldApplyV3 := false
 	if e.Index > s.consistIndex.ConsistentIndex() {
 		// set the consistent index of current executing entry
@@ -2245,11 +2373,15 @@ func (s *EtcdServer) applyEntryNormal(e *raftpb.Entry) {
 		var r pb.Request
 		rp := &r
 		pbutil.MustUnmarshal(rp, e.Data)
+
+		// zhou: etcdserver/apply_v2.go, 
 		s.w.Trigger(r.ID, s.applyV2Request((*RequestV2)(rp)))
 		return
 	}
+
 	if raftReq.V2 != nil {
 		req := (*RequestV2)(raftReq.V2)
+		// zhou:
 		s.w.Trigger(req.ID, s.applyV2Request(req))
 		return
 	}
@@ -2522,6 +2654,7 @@ func (s *EtcdServer) ClusterVersion() *semver.Version {
 // It prints out log if there is a member with a higher version than the
 // local version.
 func (s *EtcdServer) monitorVersions() {
+	// zhou: 
 	for {
 		select {
 		case <-s.forceVersionC:
@@ -2674,6 +2807,8 @@ func (s *EtcdServer) restoreAlarms() error {
 	}
 	return nil
 }
+
+// zhou:
 
 // goAttach creates a goroutine on a given function and tracks it using
 // the etcdserver waitgroup.

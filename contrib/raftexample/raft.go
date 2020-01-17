@@ -103,7 +103,9 @@ func newRaftNode(id int, peers []string, join bool, getSnapshot func() ([]byte, 
 		snapshotterReady: make(chan *snap.Snapshotter, 1),
 		// rest of structure populated after WAL replay
 	}
+
 	go rc.startRaft()
+
 	return commitC, errorC, rc.snapshotterReady
 }
 
@@ -257,16 +259,21 @@ func (rc *raftNode) writeError(err error) {
 	rc.node.Stop()
 }
 
+// zhou: 
 func (rc *raftNode) startRaft() {
+
 	if !fileutil.Exist(rc.snapdir) {
+		// zhou: make directory for saving snapshot files.
 		if err := os.Mkdir(rc.snapdir, 0750); err != nil {
 			log.Fatalf("raftexample: cannot create dir for snapshot (%v)", err)
 		}
 	}
+
 	rc.snapshotter = snap.New(zap.NewExample(), rc.snapdir)
 	rc.snapshotterReady <- rc.snapshotter
 
 	oldwal := wal.Exist(rc.waldir)
+	// zhou: replay Write Ahead Log
 	rc.wal = rc.replayWAL()
 
 	rpeers := make([]raft.Peer, len(rc.peers))
@@ -310,7 +317,9 @@ func (rc *raftNode) startRaft() {
 		}
 	}
 
+	// zhou: new goroutine for network handling
 	go rc.serveRaft()
+	// zhou: new goroutine for handling configuration changes.
 	go rc.serveChannels()
 }
 
@@ -378,7 +387,9 @@ func (rc *raftNode) maybeTriggerSnapshot() {
 	rc.snapshotIndex = rc.appliedIndex
 }
 
+// zhou: 
 func (rc *raftNode) serveChannels() {
+
 	snap, err := rc.raftStorage.Snapshot()
 	if err != nil {
 		panic(err)
@@ -402,6 +413,8 @@ func (rc *raftNode) serveChannels() {
 				if !ok {
 					rc.proposeC = nil
 				} else {
+					// zhou: propose to Raft State Machine
+
 					// blocks until accepted by raft state machine
 					rc.node.Propose(context.TODO(), []byte(prop))
 				}
@@ -454,6 +467,7 @@ func (rc *raftNode) serveChannels() {
 	}
 }
 
+// zhou: 
 func (rc *raftNode) serveRaft() {
 	url, err := url.Parse(rc.peers[rc.id-1])
 	if err != nil {

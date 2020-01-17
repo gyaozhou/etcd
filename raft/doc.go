@@ -102,10 +102,12 @@ the observed health of the node).
 This may be done at any time after step 1, although all updates must be processed
 in the order they were returned by Ready.
 
+
 Second, all persisted log entries must be made available via an
 implementation of the Storage interface. The provided MemoryStorage
 type can be used for this (if you repopulate its state upon a
 restart), or you can supply your own disk-backed implementation.
+
 
 Third, when you receive a message from another node, pass it to Node.Step:
 
@@ -113,10 +115,14 @@ Third, when you receive a message from another node, pass it to Node.Step:
 		n.Step(ctx, m)
 	}
 
+
 Finally, you need to call Node.Tick() at regular intervals (probably
 via a time.Ticker). Raft has two important timeouts: heartbeat and the
 election timeout. However, internally to the raft package time is
 represented by an abstract "tick".
+
+// zhou: state machine based code like such style timer, drived by ticks updating.
+//       It doesn't need high resolution timer.
 
 The total state machine handling loop will look something like this:
 

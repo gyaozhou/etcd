@@ -14,6 +14,9 @@
 
 package raft
 
+
+// zhou: co-work with etcdserver/raft.go
+
 import (
 	"context"
 	"errors"
@@ -46,6 +49,9 @@ func (a *SoftState) equal(b *SoftState) bool {
 	return a.Lead == b.Lead && a.RaftState == b.RaftState
 }
 
+// zhou: message format used to sent via channal "readyc", which used to by Raft lib
+//       notify platform layer (who create Raft instance, etcdserver/raft.go) to do some tasks.
+
 // Ready encapsulates the entries and messages that are ready to read,
 // be saved to stable storage, committed or sent to other peers.
 // All fields in Ready are read-only.
@@ -54,6 +60,8 @@ type Ready struct {
 	// SoftState will be nil if there is no update.
 	// It is not required to consume or store SoftState.
 	*SoftState
+
+	// zhou: before send message, we need permenent it.
 
 	// The current state of a Node to be saved to stable storage BEFORE
 	// Messages are sent.
@@ -70,13 +78,19 @@ type Ready struct {
 	// Messages are sent.
 	Entries []pb.Entry
 
+	// zhou: snapshot need permenent stored
+
 	// Snapshot specifies the snapshot to be saved to stable storage.
 	Snapshot pb.Snapshot
+
+	// zhou: already committed, but not applied to state machine
 
 	// CommittedEntries specifies entries to be committed to a
 	// store/state-machine. These have previously been committed to stable
 	// store.
 	CommittedEntries []pb.Entry
+
+	// zhou: messages need send to remote nodes which specified by "pb.Message.To"
 
 	// Messages specifies outbound messages to be sent AFTER Entries are
 	// committed to stable storage.
@@ -207,6 +221,8 @@ type Peer struct {
 	Context []byte
 }
 
+// zhou: start a Node from scratch
+
 // StartNode returns a new Node given configuration and a list of raft peers.
 // It appends a ConfChangeAddNode entry for each given peer to the initial log.
 //
@@ -215,6 +231,8 @@ func StartNode(c *Config, peers []Peer) Node {
 	if len(peers) == 0 {
 		panic("no peers given; use RestartNode instead")
 	}
+
+	// zhou: create a new object of Raft lib 
 	rn, err := NewRawNode(c)
 	if err != nil {
 		panic(err)
@@ -223,9 +241,13 @@ func StartNode(c *Config, peers []Peer) Node {
 
 	n := newNode(rn)
 
+	// zhou: run Raft lib loop.		
 	go n.run()
+
 	return &n
 }
+
+// zhou: start a Node from some initial state
 
 // RestartNode is similar to StartNode but does not take a list of peers.
 // The current membership of the cluster will be restored from the Storage.
@@ -248,13 +270,22 @@ type msgWithResult struct {
 
 // node is the canonical implementation of the Node interface
 type node struct {
+	// zhou: Etcd server -> Raft lib, when etcdserver received a Propose, MsgProp
 	propc      chan msgWithResult
+	// zhou: handle other Raft message, except MsgProp
 	recvc      chan pb.Message
 	confc      chan pb.ConfChangeV2
 	confstatec chan pb.ConfState
+
+	// zhou: Raft lib -> Etcd server, when new thing need write or send.
 	readyc     chan Ready
+	// zhou: Etcd server -> Raft lib, when write completed
 	advancec   chan struct{}
+
+	// zhou: Etcd server -> Raft lib, tick go.
 	tickc      chan struct{}
+
+	// zhou: Etcd server -> Raft lib, when need shut down, jump out from all select case
 	done       chan struct{}
 	stop       chan struct{}
 	status     chan chan Status
@@ -270,6 +301,9 @@ func newNode(rn *RawNode) node {
 		confstatec: make(chan pb.ConfState),
 		readyc:     make(chan Ready),
 		advancec:   make(chan struct{}),
+
+		// zhou: looks it's not important that the timer is not accurate.
+
 		// make tickc a buffered chan, so raft node can buffer some ticks when the node
 		// is busy processing raft messages. Raft node will resume process buffered
 		// ticks when it becomes idle.
@@ -293,6 +327,7 @@ func (n *node) Stop() {
 	<-n.done
 }
 
+// zhou: main loop as in Raft lib.		
 func (n *node) run() {
 	var propc chan msgWithResult
 	var readyc chan Ready
@@ -303,7 +338,9 @@ func (n *node) run() {
 
 	lead := None
 
+	// zhou: busy loop to handle Raft Protocol
 	for {
+
 		if advancec != nil {
 			readyc = nil
 		} else if n.rn.HasReady() {
@@ -327,6 +364,7 @@ func (n *node) run() {
 					r.logger.Infof("raft.node: %x changed leader from %x to %x at term %d", r.id, lead, r.lead, r.Term)
 				}
 				propc = n.propc
+
 			} else {
 				r.logger.Infof("raft.node: %x lost leader %x at term %d", r.id, lead, r.Term)
 				propc = nil
@@ -339,9 +377,17 @@ func (n *node) run() {
 		// described in raft dissertation)
 		// Currently it is dropped in Step silently.
 		case pm := <-propc:
+			// zhou: received a Propose from etcdserver.
+			//       When this node is Leader, raft/raft.Step() will 
+			//       1. write down entries in local raftlog
+			//       2. send MsgApp to Follower with enties.
+			//       3. wait MsgAppResp from most Follower, and update committedIndex
+			//       4. comit entries
+
 			m := pm.m
 			m.From = r.id
 			err := r.Step(m)
+
 			if pm.result != nil {
 				pm.result <- err
 				close(pm.result)
@@ -351,6 +397,7 @@ func (n *node) run() {
 			if pr := r.prs.Progress[m.From]; pr != nil || !IsResponseMsg(m.Type) {
 				r.Step(m)
 			}
+
 		case cc := <-n.confc:
 			_, okBefore := r.prs.Progress[r.id]
 			cs := r.applyConfChange(cc)
@@ -376,15 +423,18 @@ func (n *node) run() {
 					propc = nil
 				}
 			}
+
 			select {
 			case n.confstatec <- cs:
 			case <-n.done:
 			}
+
 		case <-n.tickc:
 			n.rn.Tick()
 		case readyc <- rd:
 			n.rn.acceptReady(rd)
 			advancec = n.advancec
+
 		case <-advancec:
 			n.rn.Advance(rd)
 			rd = Ready{}
@@ -401,17 +451,27 @@ func (n *node) run() {
 // Tick increments the internal logical clock for this Node. Election timeouts
 // and heartbeat timeouts are in units of ticks.
 func (n *node) Tick() {
+
 	select {
 	case n.tickc <- struct{}{}:
+		// zhou: can buffer messages up to 128 
 	case <-n.done:
 	default:
+		// zhou: due to "default" here, this select will not be blocked. 
+		//       But we hope n.tickc is ready to handle next tick, but it looks that 
+		//       previous tick is still in channel which we suppose should be completed handling.
+		//       Just print a warning message here, no further action.
+			
 		n.rn.raft.logger.Warningf("%x (leader %v) A tick missed to fire. Node blocks too long!", n.rn.raft.id, n.rn.raft.id == n.rn.raft.lead)
 	}
 }
 
 func (n *node) Campaign(ctx context.Context) error { return n.step(ctx, pb.Message{Type: pb.MsgHup}) }
 
+// zhou: reqV2HandlerEtcdServer.processRaftRequest() in v2_server.go will invoke this function
+//       the Propose will be sent to Leader.
 func (n *node) Propose(ctx context.Context, data []byte) error {
+	// zhou: blocking wait for result???
 	return n.stepWait(ctx, pb.Message{Type: pb.MsgProp, Entries: []pb.Entry{{Data: data}}})
 }
 
@@ -461,11 +521,13 @@ func (n *node) stepWithWaitOption(ctx context.Context, m pb.Message, wait bool) 
 			return ErrStopped
 		}
 	}
+
 	ch := n.propc
 	pm := msgWithResult{m: m}
 	if wait {
 		pm.result = make(chan error, 1)
 	}
+
 	select {
 	case ch <- pm:
 		if !wait {
@@ -491,6 +553,7 @@ func (n *node) stepWithWaitOption(ctx context.Context, m pb.Message, wait bool) 
 
 func (n *node) Ready() <-chan Ready { return n.readyc }
 
+// zhou: Etcd server notify that last wrote completed.
 func (n *node) Advance() {
 	select {
 	case n.advancec <- struct{}{}:
@@ -550,10 +613,12 @@ func (n *node) ReadIndex(ctx context.Context, rctx []byte) error {
 	return n.step(ctx, pb.Message{Type: pb.MsgReadIndex, Entries: []pb.Entry{{Data: rctx}}})
 }
 
+// zhou: pack all jobs to message "Ready"
 func newReady(r *raft, prevSoftSt *SoftState, prevHardSt pb.HardState) Ready {
 	rd := Ready{
 		Entries:          r.raftLog.unstableEntries(),
 		CommittedEntries: r.raftLog.nextEnts(),
+		// zhou: copy messages to be sent
 		Messages:         r.msgs,
 	}
 	if softSt := r.softState(); !softSt.equal(prevSoftSt) {

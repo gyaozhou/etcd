@@ -38,6 +38,8 @@ type Storage interface {
 	Close() error
 }
 
+// zhou: it is not a implementation of interface raft/storage, it's the backend of
+//       MemoryStorage. MemoryStorage is the implementation of interface raft/storage.
 type storage struct {
 	*wal.WAL
 	*snap.Snapshotter

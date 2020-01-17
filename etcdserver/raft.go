@@ -14,6 +14,8 @@
 
 package etcdserver
 
+// zhou: as a user of Raft lib, must follow what raft/doc.go ask to do.
+
 import (
 	"encoding/json"
 	"expvar"
@@ -76,15 +78,21 @@ type apply struct {
 	notifyc chan struct{}
 }
 
+// zhou: raftNode implement node interface in raft/node.go,
+//       raftNode communicate with other servers via node in raft/node.go.
+
 type raftNode struct {
 	lg *zap.Logger
 
 	tickMu *sync.Mutex
+	
+	// zhou: ProposeConfChange() will fallthrough here
 	raftNodeConfig
 
 	// a chan to send/receive snapshot
 	msgSnapC chan raftpb.Message
 
+	// zhou:
 	// a chan to send out apply
 	applyc chan apply
 
@@ -105,10 +113,17 @@ type raftNodeConfig struct {
 
 	// to check if msg receiver is removed from cluster
 	isIDRemoved func(id uint64) bool
+
+	// zhou: ProposeConfChange() will fallthrough here
 	raft.Node
+
+	// zhou: 
 	raftStorage *raft.MemoryStorage
+	// zhou: what's the purpose for this storage, and relationship with rafStorage.
 	storage     Storage
+
 	heartbeat   time.Duration // for logging
+
 	// transport specifies the transport to send and receive msgs to members.
 	// Sending messages MUST NOT block. It is okay to drop messages, since
 	// clients should timeout and reissue their messages.
@@ -116,6 +131,7 @@ type raftNodeConfig struct {
 	transport rafthttp.Transporter
 }
 
+// zhou: 
 func newRaftNode(cfg raftNodeConfig) *raftNode {
 	var lg raft.Logger
 	if cfg.lg != nil {
@@ -142,9 +158,11 @@ func newRaftNode(cfg raftNodeConfig) *raftNode {
 		stopped:    make(chan struct{}),
 		done:       make(chan struct{}),
 	}
+
 	if r.heartbeat == 0 {
 		r.ticker = &time.Ticker{}
 	} else {
+		// zhou: update ticks
 		r.ticker = time.NewTicker(r.heartbeat)
 	}
 	return r
@@ -157,20 +175,26 @@ func (r *raftNode) tick() {
 	r.tickMu.Unlock()
 }
 
+// zhou: loop of Etcd Server, NOT the loop of Raft lib
+
 // start prepares and starts raftNode in a new goroutine. It is no longer safe
 // to modify the fields after it has been started.
 func (r *raftNode) start(rh *raftReadyHandler) {
 	internalTimeout := time.Second
 
+	// zhou: routine for 
 	go func() {
 		defer r.onStop()
 		islead := false
-
+		
 		for {
 			select {
 			case <-r.ticker.C:
+				// zhou: receive tick from system, then push Raft lib tick go.
 				r.tick()
+
 			case rd := <-r.Ready():
+				// zhou: message from Raft lib, need to write/read harddisk or send something to remote nodes.
 				if rd.SoftState != nil {
 					newLeader := rd.SoftState.Lead != raft.None && rh.getLead() != rd.SoftState.Lead
 					if newLeader {
@@ -306,8 +330,16 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 					// leader already processed 'MsgSnap' and signaled
 					notifyc <- struct{}{}
 				}
-
+				
+				// zhou: "Call Node.Advance() to signal readiness for the next batch of updates."
+				//       Means we already completed all things need to do. 
+				//       Due to consensus protocol, we can't run a lot things in parallel.
+				//       We must indeed done something, then let Raft know it. In other word, 
+				//       we can implemented use completition function to notify done.
 				r.Advance()
+				
+				// zhou: end of "case rd := <-r.Ready():"
+
 			case <-r.stopped:
 				return
 			}
@@ -422,7 +454,9 @@ func (r *raftNode) advanceTicks(ticks int) {
 	}
 }
 
+// zhou: 
 func startNode(cfg ServerConfig, cl *membership.RaftCluster, ids []types.ID) (id types.ID, n raft.Node, s *raft.MemoryStorage, w *wal.WAL) {
+
 	var err error
 	member := cl.MemberByName(cfg.Name)
 	metadata := pbutil.MustMarshal(
@@ -431,6 +465,7 @@ func startNode(cfg ServerConfig, cl *membership.RaftCluster, ids []types.ID) (id
 			ClusterID: uint64(cl.ID()),
 		},
 	)
+
 	if w, err = wal.Create(cfg.Logger, cfg.WALDir(), metadata); err != nil {
 		if cfg.Logger != nil {
 			cfg.Logger.Panic("failed to create WAL", zap.Error(err))
@@ -438,6 +473,8 @@ func startNode(cfg ServerConfig, cl *membership.RaftCluster, ids []types.ID) (id
 			plog.Panicf("create wal error: %v", err)
 		}
 	}
+
+
 	peers := make([]raft.Peer, len(ids))
 	for i, id := range ids {
 		var ctx []byte
@@ -451,6 +488,7 @@ func startNode(cfg ServerConfig, cl *membership.RaftCluster, ids []types.ID) (id
 		}
 		peers[i] = raft.Peer{ID: uint64(id), Context: ctx}
 	}
+
 	id = member.ID
 	if cfg.Logger != nil {
 		cfg.Logger.Info(
@@ -459,8 +497,12 @@ func startNode(cfg ServerConfig, cl *membership.RaftCluster, ids []types.ID) (id
 			zap.String("cluster-id", cl.ID().String()),
 		)
 	} else {
+		// zhou: 
 		plog.Infof("starting member %s in cluster %s", id, cl.ID())
 	}
+	
+////////////////////////////////////////////////////////////////////////////////
+
 	s = raft.NewMemoryStorage()
 	c := &raft.Config{
 		ID:              uint64(id),
@@ -487,15 +529,20 @@ func startNode(cfg ServerConfig, cl *membership.RaftCluster, ids []types.ID) (id
 	if len(peers) == 0 {
 		n = raft.RestartNode(c)
 	} else {
+     	// zhou: start a Node from scratch
 		n = raft.StartNode(c, peers)
 	}
+
 	raftStatusMu.Lock()
 	raftStatus = n.Status
 	raftStatusMu.Unlock()
+
 	return id, n, s, w
 }
 
+// zhou: 
 func restartNode(cfg ServerConfig, snapshot *raftpb.Snapshot) (types.ID, *membership.RaftCluster, raft.Node, *raft.MemoryStorage, *wal.WAL) {
+
 	var walsnap walpb.Snapshot
 	if snapshot != nil {
 		walsnap.Index, walsnap.Term = snapshot.Metadata.Index, snapshot.Metadata.Term
@@ -514,12 +561,16 @@ func restartNode(cfg ServerConfig, snapshot *raftpb.Snapshot) (types.ID, *member
 	}
 	cl := membership.NewCluster(cfg.Logger, "")
 	cl.SetID(id, cid)
+	
+	// zhou: deserialization into MemoryStorage
 	s := raft.NewMemoryStorage()
 	if snapshot != nil {
 		s.ApplySnapshot(*snapshot)
 	}
 	s.SetHardState(st)
 	s.Append(ents)
+
+	// zhou: raft/raft.go
 	c := &raft.Config{
 		ID:              uint64(id),
 		ElectionTick:    cfg.ElectionTicks,
@@ -543,10 +594,13 @@ func restartNode(cfg ServerConfig, snapshot *raftpb.Snapshot) (types.ID, *member
 		}
 	}
 
+	// zhou: raft/node.go, get Raft node.
 	n := raft.RestartNode(c)
+
 	raftStatusMu.Lock()
 	raftStatus = n.Status
 	raftStatusMu.Unlock()
+
 	return id, cl, n, s, w
 }
 

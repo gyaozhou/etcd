@@ -165,6 +165,7 @@ func (h *pipelineHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// zhou: 
 type snapshotHandler struct {
 	lg          *zap.Logger
 	tr          Transporter

@@ -56,6 +56,7 @@ type Snapshotter struct {
 	dir string
 }
 
+// zhou: 
 func New(lg *zap.Logger, dir string) *Snapshotter {
 	return &Snapshotter{
 		lg:  lg,
@@ -108,6 +109,7 @@ func (s *Snapshotter) save(snapshot *raftpb.Snapshot) error {
 	return nil
 }
 
+// zhou: read snap file->raftpb->Memory Storage
 func (s *Snapshotter) Load() (*raftpb.Snapshot, error) {
 	names, err := s.snapNames()
 	if err != nil {

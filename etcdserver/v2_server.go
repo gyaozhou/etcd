@@ -14,6 +14,9 @@
 
 package etcdserver
 
+// zhou: this file handle etcd v2, key-value request.
+//       The biggest change from v2 to v3, is the key-value processing to improve performance.
+
 import (
 	"context"
 	"time"
@@ -93,18 +96,26 @@ func (a *reqV2HandlerEtcdServer) QGet(ctx context.Context, r *RequestV2) (Respon
 	return a.processRaftRequest(ctx, r)
 }
 
+// zhou: process request is going to send to Raft.
+
 func (a *reqV2HandlerEtcdServer) processRaftRequest(ctx context.Context, r *RequestV2) (Response, error) {
+
 	data, err := ((*pb.Request)(r)).Marshal()
 	if err != nil {
 		return Response{}, err
 	}
+	
+	// zhou: register to get channel, the channel will receive result when Propose completed by Raft.
 	ch := a.s.w.Register(r.ID)
 
 	start := time.Now()
+	// zhou: node.Propose() in raft/node.go
 	a.s.r.Propose(ctx, data)
+
 	proposalsPending.Inc()
 	defer proposalsPending.Dec()
 
+	// zhou: blocking wait for result
 	select {
 	case x := <-ch:
 		resp := x.(Response)
@@ -118,7 +129,9 @@ func (a *reqV2HandlerEtcdServer) processRaftRequest(ctx context.Context, r *Requ
 	return Response{}, ErrStopped
 }
 
+// zhou: handle client request, then Propose to Raft
 func (s *EtcdServer) Do(ctx context.Context, r pb.Request) (Response, error) {
+
 	r.ID = s.reqIDGen.Next()
 	h := &reqV2HandlerEtcdServer{
 		reqV2HandlerStore: reqV2HandlerStore{
@@ -130,6 +143,7 @@ func (s *EtcdServer) Do(ctx context.Context, r pb.Request) (Response, error) {
 	rp := &r
 	resp, err := ((*RequestV2)(rp)).Handle(ctx, h)
 	resp.Term, resp.Index = s.Term(), s.CommittedIndex()
+
 	return resp, err
 }
 

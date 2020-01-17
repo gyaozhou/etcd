@@ -414,6 +414,7 @@ func (cr *streamReader) run() {
 		plog.Infof("started streaming with peer %s (%s reader)", cr.peerID, t)
 	}
 
+	// zhou: loop
 	for {
 		rc, err := cr.dial(t)
 		if err != nil {

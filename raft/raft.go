@@ -63,9 +63,11 @@ const (
 	// campaignPreElection represents the first phase of a normal election when
 	// Config.PreVote is true.
 	campaignPreElection CampaignType = "CampaignPreElection"
+
 	// campaignElection represents a normal (time-based) election (the second phase
 	// of the election when Config.PreVote is true).
 	campaignElection CampaignType = "CampaignElection"
+
 	// campaignTransfer represents the type of leader transfer
 	campaignTransfer CampaignType = "CampaignTransfer"
 )
@@ -82,6 +84,7 @@ type lockedRand struct {
 	rand *rand.Rand
 }
 
+// zhou: get random value, [0, electiontimeout - 1]
 func (r *lockedRand) Intn(n int) int {
 	r.mu.Lock()
 	v := r.rand.Intn(n)
@@ -112,6 +115,8 @@ func (st StateType) String() string {
 	return stmap[uint64(st)]
 }
 
+// zhou: Raft specific configuration
+
 // Config contains the parameters to start a raft.
 type Config struct {
 	// ID is the identity of the local raft. ID cannot be 0.
@@ -123,10 +128,14 @@ type Config struct {
 	// used for testing right now.
 	peers []uint64
 
+	// zhou: Learners can't vote or promote itself.
+
 	// learners contains the IDs of all learner nodes (including self if the
 	// local node is a learner) in the raft cluster. learners only receives
 	// entries from the leader node. It does not vote or promote itself.
 	learners []uint64
+
+	// zhou: how to handle different node used different value in same cluster?
 
 	// ElectionTick is the number of Node.Tick invocations that must pass between
 	// elections. That is, if a follower does not receive any message from the
@@ -140,11 +149,16 @@ type Config struct {
 	// leadership every HeartbeatTick ticks.
 	HeartbeatTick int
 
+	// zhou: same as log.storage
+
 	// Storage is the storage for raft. raft generates entries and states to be
 	// stored in storage. raft reads the persisted entries and states out of
 	// Storage when it needs. raft reads out the previous state and configuration
 	// out of storage when restarting.
 	Storage Storage
+
+	// zhou:
+
 	// Applied is the last applied index. It should only be set when restarting
 	// raft. raft will not return entries to the application smaller or equal to
 	// Applied. If Applied is unset when restarting, raft might return previous
@@ -251,10 +265,13 @@ func (c *Config) validate() error {
 	return nil
 }
 
+// zhou: core data
 type raft struct {
 	id uint64
 
+	// zhou: node current term 
 	Term uint64
+	// zhou: already vote for node "Vote"
 	Vote uint64
 
 	readStates []ReadState
@@ -267,11 +284,13 @@ type raft struct {
 	// TODO(tbg): rename to trk.
 	prs tracker.ProgressTracker
 
+	// zhou: role
 	state StateType
 
 	// isLearner is true if the local raft node is a learner.
 	isLearner bool
 
+	// zhou: messages to be sent
 	msgs []pb.Message
 
 	// the leader id
@@ -304,6 +323,7 @@ type raft struct {
 	heartbeatElapsed int
 
 	checkQuorum bool
+	// zhouL enable two-phase election protocol or NOT, depend on config
 	preVote     bool
 
 	heartbeatTimeout int
@@ -313,19 +333,25 @@ type raft struct {
 	// when raft changes its state to follower or candidate.
 	randomizedElectionTimeout int
 	disableProposalForwarding bool
-
+	
+	// zhou: different timer handler for different roles
 	tick func()
+	// zhou: different message handler for different roles
 	step stepFunc
 
 	logger Logger
 }
 
+// zhou: create a node in Raft library.
 func newRaft(c *Config) *raft {
+
 	if err := c.validate(); err != nil {
 		panic(err.Error())
 	}
 	raftlog := newLogWithSize(c.Storage, c.Logger, c.MaxCommittedSizePerReady)
+	// zhou: returns the saved HardState and ConfState information.
 	hs, cs, err := c.Storage.InitialState()
+
 	if err != nil {
 		panic(err) // TODO(bdarnell)
 	}
@@ -370,9 +396,12 @@ func newRaft(c *Config) *raft {
 	if !IsEmptyHardState(hs) {
 		r.loadState(hs)
 	}
+
 	if c.Applied > 0 {
 		raftlog.appliedTo(c.Applied)
 	}
+
+	// zhou:
 	r.becomeFollower(r.Term, None)
 
 	var nodesStrs []string
@@ -382,6 +411,7 @@ func newRaft(c *Config) *raft {
 
 	r.logger.Infof("newRaft %x [peers: [%s], term: %d, commit: %d, applied: %d, lastindex: %d, lastterm: %d]",
 		r.id, strings.Join(nodesStrs, ","), r.Term, r.raftLog.committed, r.raftLog.applied, r.raftLog.lastIndex(), r.raftLog.lastTerm())
+
 	return r
 }
 
@@ -400,6 +430,7 @@ func (r *raft) hardState() pb.HardState {
 // send persists state to stable storage and then sends to its mailbox.
 func (r *raft) send(m pb.Message) {
 	m.From = r.id
+
 	if m.Type == pb.MsgVote || m.Type == pb.MsgVoteResp || m.Type == pb.MsgPreVote || m.Type == pb.MsgPreVoteResp {
 		if m.Term == 0 {
 			// All {pre-,}campaign messages need to have the term set when
@@ -416,6 +447,7 @@ func (r *raft) send(m pb.Message) {
 			//   same reasons MsgPreVote is
 			panic(fmt.Sprintf("term should be set when sending %s", m.Type))
 		}
+
 	} else {
 		if m.Term != 0 {
 			panic(fmt.Sprintf("term should not be set when sending %s (was %d)", m.Type, m.Term))
@@ -428,6 +460,10 @@ func (r *raft) send(m pb.Message) {
 			m.Term = r.Term
 		}
 	}
+
+	// zhou: append to sending message list. "r.msgs" will be copied to "Ready" message, then send
+	//       to channel "readyc", handled by Etcd Server.
+	//       This function invoked in thread "node.run()", same as "newReady()"
 	r.msgs = append(r.msgs, m)
 }
 
@@ -601,6 +637,7 @@ func (r *raft) maybeCommit() bool {
 	return r.raftLog.maybeCommit(mci, r.Term)
 }
 
+// zhou: 
 func (r *raft) reset(term uint64) {
 	if r.Term != term {
 		r.Term = term
@@ -655,12 +692,17 @@ func (r *raft) appendEntry(es ...pb.Entry) (accepted bool) {
 	return true
 }
 
+// zhou: Follower and Candidate tick handler, both of them only take care Election timer.
+
 // tickElection is run by followers and candidates after r.electionTimeout.
 func (r *raft) tickElection() {
+
 	r.electionElapsed++
 
 	if r.promotable() && r.pastElectionTimeout() {
 		r.electionElapsed = 0
+
+		// zhou: make Election timeout as a message "MsgHup" send to itself.
 		r.Step(pb.Message{From: r.id, Type: pb.MsgHup})
 	}
 }
@@ -691,28 +733,45 @@ func (r *raft) tickHeartbeat() {
 	}
 }
 
+// zhou: change to Raft Follower
 func (r *raft) becomeFollower(term uint64, lead uint64) {
+	// zhou: set Follower message handler
 	r.step = stepFollower
+
+	// zhou: depends on why become Follower, the term is different. When a new node, term=1.
 	r.reset(term)
+
+	// zhou: set Follwer timer handler, also means election timer handler.
 	r.tick = r.tickElection
+
+	// zhou: if we know who are Leader.
 	r.lead = lead
+
+	// zhou: role state
 	r.state = StateFollower
+
 	r.logger.Infof("%x became follower at term %d", r.id, r.Term)
 }
 
+// zhou: Raft Candidate
 func (r *raft) becomeCandidate() {
 	// TODO(xiangli) remove the panic when the raft implementation is stable
 	if r.state == StateLeader {
 		panic("invalid transition [leader -> candidate]")
 	}
+
 	r.step = stepCandidate
+
+	// zhou: Term increased
 	r.reset(r.Term + 1)
 	r.tick = r.tickElection
 	r.Vote = r.id
 	r.state = StateCandidate
+
 	r.logger.Infof("%x became candidate at term %d", r.id, r.Term)
 }
 
+// zhou: 
 func (r *raft) becomePreCandidate() {
 	// TODO(xiangli) remove the panic when the raft implementation is stable
 	if r.state == StateLeader {
@@ -729,13 +788,17 @@ func (r *raft) becomePreCandidate() {
 	r.logger.Infof("%x became pre-candidate at term %d", r.id, r.Term)
 }
 
+// zhou: Raft Leader 
 func (r *raft) becomeLeader() {
 	// TODO(xiangli) remove the panic when the raft implementation is stable
 	if r.state == StateFollower {
 		panic("invalid transition [follower -> leader]")
 	}
+
 	r.step = stepLeader
+	// zhou: no need to increase Term when Candidate->Leader
 	r.reset(r.Term)
+
 	r.tick = r.tickHeartbeat
 	r.lead = r.id
 	r.state = StateLeader
@@ -775,22 +838,28 @@ func (r *raft) campaign(t CampaignType) {
 	}
 	var term uint64
 	var voteMsg pb.MessageType
+	
+	// zhou: string compare
 	if t == campaignPreElection {
 		r.becomePreCandidate()
 		voteMsg = pb.MsgPreVote
 		// PreVote RPCs are sent for the next term before we've incremented r.Term.
 		term = r.Term + 1
 	} else {
+		// zhou: when election timeout, this node will bacome Candidate and try to get enough 
+		//       vote for becoming Leader.
 		r.becomeCandidate()
 		voteMsg = pb.MsgVote
 		term = r.Term
 	}
+	// zhou: vote to itself, and check whether enough as majority			
 	if _, _, res := r.poll(r.id, voteRespMsgType(voteMsg), true); res == quorum.VoteWon {
 		// We won the election after voting for ourselves (which must mean that
 		// this is a single-node cluster). Advance to the next state.
 		if t == campaignPreElection {
 			r.campaign(campaignElection)
 		} else {
+			// zhou: in case of only one member defined in this cluster, no need to wait for more vote.
 			r.becomeLeader()
 		}
 		return
@@ -808,17 +877,24 @@ func (r *raft) campaign(t CampaignType) {
 		if id == r.id {
 			continue
 		}
+
 		r.logger.Infof("%x [logterm: %d, index: %d] sent %s request to %x at term %d",
 			r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), voteMsg, id, r.Term)
 
 		var ctx []byte
+
+		// zhou: in case of transfer leadership
 		if t == campaignTransfer {
 			ctx = []byte(t)
 		}
+
+		// zhou: request vote to all other memebers for becoming Leader. 
+		//       Term already increased when becoming Candidate, if no PreVote.
 		r.send(pb.Message{Term: term, To: id, Type: voteMsg, Index: r.raftLog.lastIndex(), LogTerm: r.raftLog.lastTerm(), Context: ctx})
 	}
 }
 
+// zhou: received a vote, update vote result.		
 func (r *raft) poll(id uint64, t pb.MessageType, v bool) (granted int, rejected int, result quorum.VoteResult) {
 	if v {
 		r.logger.Infof("%x received %s from %x at term %d", r.id, t, id, r.Term)
@@ -829,15 +905,25 @@ func (r *raft) poll(id uint64, t pb.MessageType, v bool) (granted int, rejected 
 	return r.prs.TallyVotes()
 }
 
+// zhou: in Raft lib, all roles will share this message handler.
 func (r *raft) Step(m pb.Message) error {
+	////////////////////////////////////////////////////////////////////////////////
+	// zhou: first handle term in message
+	
 	// Handle the message term, which may result in our stepping down to a follower.
 	switch {
 	case m.Term == 0:
 		// local message
+
 	case m.Term > r.Term:
+
 		if m.Type == pb.MsgVote || m.Type == pb.MsgPreVote {
+			// zhou: customer want move Leader to another node.
 			force := bytes.Equal(m.Context, []byte(campaignTransfer))
+
+			// zhou: the sender itself may meet network stuck with Leader, this node is fine.
 			inLease := r.checkQuorum && r.lead != None && r.electionElapsed < r.electionTimeout
+
 			if !force && inLease {
 				// If a server receives a RequestVote request within the minimum election timeout
 				// of hearing from a current leader, it does not update its term or grant its vote
@@ -846,6 +932,7 @@ func (r *raft) Step(m pb.Message) error {
 				return nil
 			}
 		}
+
 		switch {
 		case m.Type == pb.MsgPreVote:
 			// Never change our term in response to a PreVote
@@ -889,14 +976,18 @@ func (r *raft) Step(m pb.Message) error {
 			// However, this disruption is inevitable to free this stuck node with
 			// fresh election. This can be prevented with Pre-Vote phase.
 			r.send(pb.Message{To: m.From, Type: pb.MsgAppResp})
+
 		} else if m.Type == pb.MsgPreVote {
+
 			// Before Pre-Vote enable, there may have candidate with higher term,
 			// but less log. After update to Pre-Vote, the cluster may deadlock if
 			// we drop messages with a lower term.
 			r.logger.Infof("%x [logterm: %d, index: %d, vote: %x] rejected %s from %x [logterm: %d, index: %d] at term %d",
 				r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.Vote, m.Type, m.From, m.LogTerm, m.Index, r.Term)
 			r.send(pb.Message{To: m.From, Term: r.Term, Type: pb.MsgPreVoteResp, Reject: true})
+
 		} else {
+
 			// ignore other cases
 			r.logger.Infof("%x [term: %d] ignored a %s message with lower term from %x [term: %d]",
 				r.id, r.Term, m.Type, m.From, m.Term)
@@ -904,8 +995,13 @@ func (r *raft) Step(m pb.Message) error {
 		return nil
 	}
 
+	////////////////////////////////////////////////////////////////////////////////
+	// zhou: first handle message type in message
+
 	switch m.Type {
+
 	case pb.MsgHup:
+		// zhou: when Election timer expired
 		if r.state != StateLeader {
 			if !r.promotable() {
 				r.logger.Warningf("%x is unpromotable and can not campaign; ignoring MsgHup", r.id)
@@ -915,20 +1011,29 @@ func (r *raft) Step(m pb.Message) error {
 			if err != nil {
 				r.logger.Panicf("unexpected error getting unapplied entries (%v)", err)
 			}
+			
+			// zhou: in case of some Config Change have commited, but not applied, abort Compaign
 			if n := numOfPendingConf(ents); n != 0 && r.raftLog.committed > r.raftLog.applied {
+
 				r.logger.Warningf("%x cannot campaign at term %d since there are still %d pending configuration changes to apply", r.id, r.Term, n)
+
 				return nil
 			}
 
 			r.logger.Infof("%x is starting a new election at term %d", r.id, r.Term)
+			
 			if r.preVote {
+				// zhou: more practical option
 				r.campaign(campaignPreElection)
 			} else {
 				r.campaign(campaignElection)
 			}
+
 		} else {
+			// zhou: Election Timer expired again, this node just become Leader
 			r.logger.Debugf("%x ignoring MsgHup because already leader", r.id)
 		}
+
 
 	case pb.MsgVote, pb.MsgPreVote:
 		// We can vote if this is a repeat of a vote we've already cast...
@@ -937,6 +1042,10 @@ func (r *raft) Step(m pb.Message) error {
 			(r.Vote == None && r.lead == None) ||
 			// ...or this is a PreVote for a future term...
 			(m.Type == pb.MsgPreVote && m.Term > r.Term)
+		
+		// zhou: Follower think the new Leader must owns all logs I have. 
+		//       It make sure all replicated to majority nodes' log will be perserved
+
 		// ...and we believe the candidate is up to date.
 		if canVote && r.raftLog.isUpToDate(m.Index, m.LogTerm) {
 			// Note: it turns out that that learners must be allowed to cast votes.
@@ -959,6 +1068,7 @@ func (r *raft) Step(m pb.Message) error {
 			// https://github.com/etcd-io/etcd/issues/7625#issuecomment-488798263.
 			r.logger.Infof("%x [logterm: %d, index: %d, vote: %x] cast %s for %x [logterm: %d, index: %d] at term %d",
 				r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.Vote, m.Type, m.From, m.LogTerm, m.Index, r.Term)
+
 			// When responding to Msg{Pre,}Vote messages we include the term
 			// from the message, not the local term. To see why, consider the
 			// case where a single node was previously partitioned away and
@@ -969,6 +1079,8 @@ func (r *raft) Step(m pb.Message) error {
 			// The term in the original message and current local term are the
 			// same in the case of regular votes, but different for pre-votes.
 			r.send(pb.Message{To: m.From, Term: m.Term, Type: voteRespMsgType(m.Type)})
+
+			// zhou: when "canVote" be true???
 			if m.Type == pb.MsgVote {
 				// Only record real votes.
 				r.electionElapsed = 0
@@ -977,10 +1089,12 @@ func (r *raft) Step(m pb.Message) error {
 		} else {
 			r.logger.Infof("%x [logterm: %d, index: %d, vote: %x] rejected %s from %x [logterm: %d, index: %d] at term %d",
 				r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.Vote, m.Type, m.From, m.LogTerm, m.Index, r.Term)
+
 			r.send(pb.Message{To: m.From, Term: r.Term, Type: voteRespMsgType(m.Type), Reject: true})
 		}
 
 	default:
+		// zhou: all other message types will fall here.
 		err := r.step(r, m)
 		if err != nil {
 			return err
@@ -1019,7 +1133,9 @@ func stepLeader(r *raft, m pb.Message) error {
 			}
 		})
 		return nil
+
 	case pb.MsgProp:
+
 		if len(m.Entries) == 0 {
 			r.logger.Panicf("%x stepped empty MsgProp", r.id)
 		}
@@ -1029,6 +1145,7 @@ func stepLeader(r *raft, m pb.Message) error {
 			// drop any new proposals.
 			return ErrProposalDropped
 		}
+
 		if r.leadTransferee != None {
 			r.logger.Debugf("%x [term %d] transfer leadership to %x is in progress; dropping proposal", r.id, r.Term, r.leadTransferee)
 			return ErrProposalDropped
@@ -1073,11 +1190,14 @@ func stepLeader(r *raft, m pb.Message) error {
 			}
 		}
 
+		// zhou: normal path for handling new Propose.			
 		if !r.appendEntry(m.Entries...) {
 			return ErrProposalDropped
 		}
 		r.bcastAppend()
+
 		return nil
+
 	case pb.MsgReadIndex:
 		// If more than the local vote is needed, go through a full broadcast,
 		// otherwise optimize.
@@ -1121,6 +1241,7 @@ func stepLeader(r *raft, m pb.Message) error {
 		r.logger.Debugf("%x no progress available for %x", r.id, m.From)
 		return nil
 	}
+
 	switch m.Type {
 	case pb.MsgAppResp:
 		pr.RecentActive = true
@@ -1279,12 +1400,15 @@ func stepCandidate(r *raft, m pb.Message) error {
 	// StateCandidate, we may get stale MsgPreVoteResp messages in this term from
 	// our pre-candidate state).
 	var myVoteRespType pb.MessageType
+
 	if r.state == StatePreCandidate {
 		myVoteRespType = pb.MsgPreVoteResp
 	} else {
 		myVoteRespType = pb.MsgVoteResp
 	}
+
 	switch m.Type {
+
 	case pb.MsgProp:
 		r.logger.Infof("%x no leader at term %d; dropping proposal", r.id, r.Term)
 		return ErrProposalDropped
@@ -1298,6 +1422,7 @@ func stepCandidate(r *raft, m pb.Message) error {
 		r.becomeFollower(m.Term, m.From) // always m.Term == r.Term
 		r.handleSnapshot(m)
 	case myVoteRespType:
+		// zhou: check all reeived votes for this Candidate				
 		gr, rj, res := r.poll(m.From, m.Type, !m.Reject)
 		r.logger.Infof("%x has received %d %s votes and %d vote rejections", r.id, gr, m.Type, rj)
 		switch res {
@@ -1319,7 +1444,9 @@ func stepCandidate(r *raft, m pb.Message) error {
 	return nil
 }
 
+// zhou: message handler as follower role
 func stepFollower(r *raft, m pb.Message) error {
+
 	switch m.Type {
 	case pb.MsgProp:
 		if r.lead == None {
@@ -1378,21 +1505,26 @@ func stepFollower(r *raft, m pb.Message) error {
 }
 
 func (r *raft) handleAppendEntries(m pb.Message) {
+	
+	// zhou: don't we need to check more details?
 	if m.Index < r.raftLog.committed {
 		r.send(pb.Message{To: m.From, Type: pb.MsgAppResp, Index: r.raftLog.committed})
 		return
 	}
 
+	// zhou: make sure the new received Log Entries are continous with already received.
 	if mlastIndex, ok := r.raftLog.maybeAppend(m.Index, m.LogTerm, m.Commit, m.Entries...); ok {
 		r.send(pb.Message{To: m.From, Type: pb.MsgAppResp, Index: mlastIndex})
 	} else {
 		r.logger.Debugf("%x [logterm: %d, index: %d] rejected MsgApp [logterm: %d, index: %d] from %x",
 			r.id, r.raftLog.zeroTermOnErrCompacted(r.raftLog.term(m.Index)), m.Index, m.LogTerm, m.Index, m.From)
+
 		r.send(pb.Message{To: m.From, Type: pb.MsgAppResp, Index: m.Index, Reject: true, RejectHint: r.raftLog.lastIndex()})
 	}
 }
 
 func (r *raft) handleHeartbeat(m pb.Message) {
+	// zhou: received from Leader, so change committed index.
 	r.raftLog.commitTo(m.Commit)
 	r.send(pb.Message{To: m.From, Type: pb.MsgHeartbeatResp, Context: m.Context})
 }
@@ -1488,6 +1620,8 @@ func (r *raft) restore(s pb.Snapshot) bool {
 	return true
 }
 
+// zhou: ???
+
 // promotable indicates whether state machine can be promoted to leader,
 // which is true when its own id is in progress list.
 func (r *raft) promotable() bool {
@@ -1582,6 +1716,8 @@ func (r *raft) loadState(state pb.HardState) {
 	r.Term = state.Term
 	r.Vote = state.Vote
 }
+
+// zhou: 
 
 // pastElectionTimeout returns true iff r.electionElapsed is greater
 // than or equal to the randomized election timeout in

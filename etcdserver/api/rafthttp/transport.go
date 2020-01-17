@@ -92,6 +92,8 @@ type Transporter interface {
 	Stop()
 }
 
+// zhou: 
+
 // Transport implements Transporter interface. It provides the functionality
 // to send raft messages to peers, and receive raft messages from peers.
 // User should call Handler method to get a handler to serve requests
@@ -158,15 +160,19 @@ func (t *Transport) Start() error {
 	return nil
 }
 
+// zhou: 
 func (t *Transport) Handler() http.Handler {
+
 	pipelineHandler := newPipelineHandler(t, t.Raft, t.ClusterID)
 	streamHandler := newStreamHandler(t, t, t.Raft, t.ID, t.ClusterID)
 	snapHandler := newSnapshotHandler(t, t.Raft, t.Snapshotter, t.ClusterID)
+
 	mux := http.NewServeMux()
 	mux.Handle(RaftPrefix, pipelineHandler)
 	mux.Handle(RaftStreamPrefix+"/", streamHandler)
 	mux.Handle(RaftSnapshotPrefix, snapHandler)
 	mux.Handle(ProbingPrefix, probing.NewHandler())
+
 	return mux
 }
 
@@ -176,7 +182,9 @@ func (t *Transport) Get(id types.ID) Peer {
 	return t.peers[id]
 }
 
+// zhou: platform implementation, used by etcdserver/raft.go to send message
 func (t *Transport) Send(msgs []raftpb.Message) {
+
 	for _, m := range msgs {
 		if m.To == 0 {
 			// ignore intentionally dropped message
@@ -266,6 +274,7 @@ func (t *Transport) MendPeer(id types.ID) {
 }
 
 func (t *Transport) AddRemote(id types.ID, us []string) {
+
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.remotes == nil {
@@ -300,6 +309,7 @@ func (t *Transport) AddRemote(id types.ID, us []string) {
 	}
 }
 
+// zhou: 
 func (t *Transport) AddPeer(id types.ID, us []string) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -319,6 +329,7 @@ func (t *Transport) AddPeer(id types.ID, us []string) {
 		}
 	}
 	fs := t.LeaderStats.Follower(id.String())
+	// zhou:
 	t.peers[id] = startPeer(t, urls, id, fs)
 	addPeerToProber(t.Logger, t.pipelineProber, id.String(), us, RoundTripperNameSnapshot, rttSec)
 	addPeerToProber(t.Logger, t.streamProber, id.String(), us, RoundTripperNameRaftMessage, rttSec)

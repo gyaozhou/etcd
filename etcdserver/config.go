@@ -65,7 +65,10 @@ type ServerConfig struct {
 	BackendFreelistType bolt.FreelistType
 
 	InitialPeerURLsMap  types.URLsMap
+	// zhou: Cluter Name
 	InitialClusterToken string
+
+	// zhou: false, has member file when start etcd (need confirm)
 	NewCluster          bool
 	PeerTLSInfo         transport.TLSInfo
 

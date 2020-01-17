@@ -16,6 +16,8 @@ package raft
 
 import pb "go.etcd.io/etcd/raft/raftpb"
 
+// zhou: "unstable" is part of "raftlog"
+
 // unstable.entries[i] has raft log position i+unstable.offset.
 // Note that unstable.offset may be less than the highest log
 // position in storage; this means that the next write to storage

@@ -14,6 +14,13 @@
 
 package raft
 
+// zhou: interface "Storage" used by "raftlog"
+//
+//       define storage interface required by Raft, then implement a Momory Storage.
+//       The Memory Storage defines how data structured, and will be serialization by 
+//       pb. All things store in memory. So how Memory Storage handle persistent.
+//      
+
 import (
 	"errors"
 	"sync"
@@ -36,6 +43,8 @@ var ErrUnavailable = errors.New("requested entry at index is unavailable")
 // ErrSnapshotTemporarilyUnavailable is returned by the Storage interface when the required
 // snapshot is temporarily unavailable.
 var ErrSnapshotTemporarilyUnavailable = errors.New("snapshot is temporarily unavailable")
+
+// zhou: Just define what the implementation need to do.
 
 // Storage is an interface that may be implemented by the application
 // to retrieve log entries from storage.
@@ -84,6 +93,8 @@ type MemoryStorage struct {
 	// ents[i] has raft log position i+snapshot.Metadata.Index
 	ents []pb.Entry
 }
+
+// zhou: 
 
 // NewMemoryStorage creates an empty MemoryStorage.
 func NewMemoryStorage() *MemoryStorage {
@@ -166,6 +177,7 @@ func (ms *MemoryStorage) firstIndex() uint64 {
 func (ms *MemoryStorage) Snapshot() (pb.Snapshot, error) {
 	ms.Lock()
 	defer ms.Unlock()
+
 	return ms.snapshot, nil
 }
 

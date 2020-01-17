@@ -76,9 +76,12 @@ const (
 	PrevNoExist = PrevExistType("false")
 )
 
+// zhou: v2 keys saved in special directory, so can't be compatible with v3 API.
 var (
 	defaultV2KeysPrefix = "/v2/keys"
 )
+
+// zhou: Etcd v2 only supports http API.
 
 // NewKeysAPI builds a KeysAPI that interacts with etcd's key-value
 // API over HTTP.
@@ -90,12 +93,16 @@ func NewKeysAPI(c Client) KeysAPI {
 // to provide a custom base URL path. This should only be used in
 // very rare cases.
 func NewKeysAPIWithPrefix(c Client, p string) KeysAPI {
+	// zhou: struct "httpKeysAPI" provide methods interface KeysAPI defines.
 	return &httpKeysAPI{
+		// zhou: "client httpClient", "httpClient interface" could be satisfied
+		//       by "Client interface".
 		client: c,
 		prefix: p,
 	}
 }
 
+// zhou: client's operations
 type KeysAPI interface {
 	// Get retrieves a set of Nodes from etcd
 	Get(ctx context.Context, key string, opts *GetOptions) (*Response, error)
@@ -257,6 +264,8 @@ type Response struct {
 	// compareAndDelete and expire.
 	Action string `json:"action"`
 
+	// zhou: the command exectuion result stored in "Node"
+
 	// Node represents the state of the relevant etcd Node.
 	Node *Node `json:"node"`
 
@@ -274,6 +283,7 @@ type Response struct {
 	ClusterID string `json:"-"`
 }
 
+// zhou: 
 type Node struct {
 	// Key represents the unique location of this Node (e.g. "/foo/bar").
 	Key string `json:"key"`
@@ -290,12 +300,17 @@ type Node struct {
 	// grandchildren, etc.) if a recursive Get or Watch request were made.
 	Nodes Nodes `json:"nodes"`
 
+	// zhou: each time a new node join cluster, will be assgined an unique, 
+	//       monotonically-incrementing integer.
+	//       Old node who lost permanent storage will be treated as new ndoe also.
+
 	// CreatedIndex is the etcd index at-which this Node was created.
 	CreatedIndex uint64 `json:"createdIndex"`
 
 	// ModifiedIndex is the etcd index at-which this Node was last modified.
 	ModifiedIndex uint64 `json:"modifiedIndex"`
 
+	// zhou: wall clock time, from January 1, year 1, 00:00:00.000000000 UTC
 	// Expiration is the server side expiration time of the key.
 	Expiration *time.Time `json:"expiration,omitempty"`
 
@@ -321,11 +336,14 @@ func (ns Nodes) Less(i, j int) bool { return ns[i].Key < ns[j].Key }
 func (ns Nodes) Swap(i, j int)      { ns[i], ns[j] = ns[j], ns[i] }
 
 type httpKeysAPI struct {
+	// zhou: only define key/value operation interface
 	client httpClient
 	prefix string
 }
 
+// zhou: 
 func (k *httpKeysAPI) Set(ctx context.Context, key, val string, opts *SetOptions) (*Response, error) {
+
 	act := &setAction{
 		Prefix: k.prefix,
 		Key:    key,
@@ -346,6 +364,8 @@ func (k *httpKeysAPI) Set(ctx context.Context, key, val string, opts *SetOptions
 	if act.PrevExist == PrevNoExist {
 		doCtx = context.WithValue(doCtx, &oneShotCtxValue, &oneShotCtxValue)
 	}
+
+	// zhou: invoke "httpClusterClient.Do()", "setAction struct" implement "httpAction interface".
 	resp, body, err := k.client.Do(doCtx, act)
 	if err != nil {
 		return nil, err
@@ -354,6 +374,7 @@ func (k *httpKeysAPI) Set(ctx context.Context, key, val string, opts *SetOptions
 	return unmarshalHTTPResponse(resp.StatusCode, resp.Header, body)
 }
 
+// zhou: 
 func (k *httpKeysAPI) Create(ctx context.Context, key, val string) (*Response, error) {
 	return k.Set(ctx, key, val, &SetOptions{PrevExist: PrevNoExist})
 }
@@ -404,6 +425,7 @@ func (k *httpKeysAPI) Delete(ctx context.Context, key string, opts *DeleteOption
 }
 
 func (k *httpKeysAPI) Get(ctx context.Context, key string, opts *GetOptions) (*Response, error) {
+
 	act := &getAction{
 		Prefix: k.prefix,
 		Key:    key,
@@ -421,6 +443,7 @@ func (k *httpKeysAPI) Get(ctx context.Context, key string, opts *GetOptions) (*R
 	}
 
 	return unmarshalHTTPResponse(resp.StatusCode, resp.Header, body)
+
 }
 
 func (k *httpKeysAPI) Watcher(key string, opts *WatcherOptions) Watcher {
@@ -442,11 +465,13 @@ func (k *httpKeysAPI) Watcher(key string, opts *WatcherOptions) Watcher {
 	}
 }
 
+// zhou: 
 type httpWatcher struct {
 	client   httpClient
 	nextWait waitAction
 }
 
+// zhou:
 func (hw *httpWatcher) Next(ctx context.Context) (*Response, error) {
 	for {
 		httpresp, body, err := hw.client.Do(ctx, &hw.nextWait)
@@ -493,7 +518,7 @@ type getAction struct {
 	Sorted    bool
 	Quorum    bool
 }
-
+// zhou: convert "getAction struct" to "http.Request"
 func (g *getAction) HTTPRequest(ep url.URL) *http.Request {
 	u := v2KeysURL(ep, g.Prefix, g.Key)
 
@@ -514,6 +539,7 @@ type waitAction struct {
 	Recursive bool
 }
 
+// zhou: convert "waitAction struct" to "http.Request"
 func (w *waitAction) HTTPRequest(ep url.URL) *http.Request {
 	u := v2KeysURL(ep, w.Prefix, w.Key)
 
@@ -527,19 +553,23 @@ func (w *waitAction) HTTPRequest(ep url.URL) *http.Request {
 	return req
 }
 
+// zhou: used to fully describe a action.
 type setAction struct {
 	Prefix           string
 	Key              string
 	Value            string
+
 	PrevValue        string
 	PrevIndex        uint64
 	PrevExist        PrevExistType
+
 	TTL              time.Duration
 	Refresh          bool
 	Dir              bool
 	NoValueOnSuccess bool
 }
 
+// zhou: convert "setAction struct" to "http.Request"
 func (a *setAction) HTTPRequest(ep url.URL) *http.Request {
 	u := v2KeysURL(ep, a.Prefix, a.Key)
 
@@ -593,6 +623,7 @@ type deleteAction struct {
 	Recursive bool
 }
 
+// zhou: convert "deleteAction struct" to "http.Request"
 func (a *deleteAction) HTTPRequest(ep url.URL) *http.Request {
 	u := v2KeysURL(ep, a.Prefix, a.Key)
 
@@ -624,6 +655,7 @@ type createInOrderAction struct {
 	TTL    time.Duration
 }
 
+// zhou: convert "createInOrderAction struct" to "http.Request"
 func (a *createInOrderAction) HTTPRequest(ep url.URL) *http.Request {
 	u := v2KeysURL(ep, a.Prefix, a.Dir)
 
@@ -639,7 +671,9 @@ func (a *createInOrderAction) HTTPRequest(ep url.URL) *http.Request {
 	return req
 }
 
+
 func unmarshalHTTPResponse(code int, header http.Header, body []byte) (res *Response, err error) {
+
 	switch code {
 	case http.StatusOK, http.StatusCreated:
 		if len(body) == 0 {
