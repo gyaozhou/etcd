@@ -18,8 +18,8 @@ import (
 	goruntime "runtime"
 	"time"
 
-	"go.etcd.io/etcd/pkg/runtime"
-	"go.etcd.io/etcd/version"
+	"go.etcd.io/etcd/v3/pkg/runtime"
+	"go.etcd.io/etcd/v3/version"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
@@ -184,33 +184,27 @@ func init() {
 }
 
 func monitorFileDescriptor(lg *zap.Logger, done <-chan struct{}) {
-	ticker := time.NewTicker(5 * time.Second)
+
+	// This ticker will check File Descriptor Requirements ,and count all fds in used.
+	// And recorded some logs when in used >= limit/5*4. Just recorded message.
+	// If fds was more than 10K,It's low performance due to FDUsage() works.
+	// So need to increase it.
+	// See https://github.com/etcd-io/etcd/issues/11969 for more detail.
+	ticker := time.NewTicker(10 * time.Minute)
 	defer ticker.Stop()
 	for {
 		used, err := runtime.FDUsage()
 		if err != nil {
-			if lg != nil {
-				lg.Warn("failed to get file descriptor usage", zap.Error(err))
-			} else {
-				plog.Errorf("cannot monitor file descriptor usage (%v)", err)
-			}
+			lg.Warn("failed to get file descriptor usage", zap.Error(err))
 			return
 		}
 		limit, err := runtime.FDLimit()
 		if err != nil {
-			if lg != nil {
-				lg.Warn("failed to get file descriptor limit", zap.Error(err))
-			} else {
-				plog.Errorf("cannot monitor file descriptor usage (%v)", err)
-			}
+			lg.Warn("failed to get file descriptor limit", zap.Error(err))
 			return
 		}
 		if used >= limit/5*4 {
-			if lg != nil {
-				lg.Warn("80% of file descriptors are used", zap.Uint64("used", used), zap.Uint64("limit", limit))
-			} else {
-				plog.Warningf("80%% of the file descriptor limit is used [used = %d, limit = %d]", used, limit)
-			}
+			lg.Warn("80% of file descriptors are used", zap.Uint64("used", used), zap.Uint64("limit", limit))
 		}
 		select {
 		case <-ticker.C:

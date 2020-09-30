@@ -19,11 +19,10 @@ import (
 	"os"
 	"time"
 
-	"go.etcd.io/etcd/etcdserver/api/snap"
-	"go.etcd.io/etcd/lease"
-	"go.etcd.io/etcd/mvcc"
-	"go.etcd.io/etcd/mvcc/backend"
-	"go.etcd.io/etcd/raft/raftpb"
+	"go.etcd.io/etcd/v3/etcdserver/api/snap"
+	"go.etcd.io/etcd/v3/etcdserver/cindex"
+	"go.etcd.io/etcd/v3/mvcc/backend"
+	"go.etcd.io/etcd/v3/raft/raftpb"
 
 	"go.uber.org/zap"
 )
@@ -33,6 +32,7 @@ import (
 func newBackend(cfg ServerConfig) backend.Backend {
 	bcfg := backend.DefaultBackendConfig()
 	bcfg.Path = cfg.backendPath()
+	bcfg.UnsafeNoFsync = cfg.UnsafeNoFsync
 	if cfg.BackendBatchLimit != 0 {
 		bcfg.BatchLimit = cfg.BackendBatchLimit
 		if cfg.Logger != nil {
@@ -77,22 +77,15 @@ func openBackend(cfg ServerConfig) backend.Backend {
 
 	select {
 	case be := <-beOpened:
-		if cfg.Logger != nil {
-			cfg.Logger.Info("opened backend db", zap.String("path", fn), zap.Duration("took", time.Since(now)))
-		}
+		cfg.Logger.Info("opened backend db", zap.String("path", fn), zap.Duration("took", time.Since(now)))
 		return be
 
 	case <-time.After(10 * time.Second):
-		if cfg.Logger != nil {
-			cfg.Logger.Info(
-				"db file is flocked by another process, or taking too long",
-				zap.String("path", fn),
-				zap.Duration("took", time.Since(now)),
-			)
-		} else {
-			plog.Warningf("another etcd process is using %q and holds the file lock, or loading backend file is taking >10 seconds", fn)
-			plog.Warningf("waiting for it to exit before starting...")
-		}
+		cfg.Logger.Info(
+			"db file is flocked by another process, or taking too long",
+			zap.String("path", fn),
+			zap.Duration("took", time.Since(now)),
+		)
 	}
 
 	return <-beOpened
@@ -102,11 +95,13 @@ func openBackend(cfg ServerConfig) backend.Backend {
 // before updating the backend db after persisting raft snapshot to disk,
 // violating the invariant snapshot.Metadata.Index < db.consistentIndex. In this
 // case, replace the db with the snapshot db sent by the leader.
-func recoverSnapshotBackend(cfg ServerConfig, oldbe backend.Backend, snapshot raftpb.Snapshot) (backend.Backend, error) {
-	var cIndex consistentIndex
-	kv := mvcc.New(cfg.Logger, oldbe, &lease.FakeLessor{}, &cIndex, mvcc.StoreConfig{CompactionBatchLimit: cfg.CompactionBatchLimit})
-	defer kv.Close()
-	if snapshot.Metadata.Index <= kv.ConsistentIndex() {
+func recoverSnapshotBackend(cfg ServerConfig, oldbe backend.Backend, snapshot raftpb.Snapshot, beExist bool) (backend.Backend, error) {
+	consistentIndex := uint64(0)
+	if beExist {
+		ci := cindex.NewConsistentIndex(oldbe.BatchTx())
+		consistentIndex = ci.ConsistentIndex()
+	}
+	if snapshot.Metadata.Index <= consistentIndex {
 		return oldbe, nil
 	}
 	oldbe.Close()

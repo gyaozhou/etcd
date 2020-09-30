@@ -18,7 +18,7 @@ import (
 	"flag"
 	"strings"
 
-	"go.etcd.io/etcd/raft/raftpb"
+	"go.etcd.io/etcd/v3/raft/raftpb"
 )
 
 // zhou: Http PUT value -> kvStore.Propose -> proposeC -> raft -> commitC -> map[string] string

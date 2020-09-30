@@ -27,17 +27,17 @@ import (
 	"strings"
 	"time"
 
-	"go.etcd.io/etcd/etcdserver"
-	"go.etcd.io/etcd/etcdserver/api"
-	"go.etcd.io/etcd/etcdserver/api/etcdhttp"
-	"go.etcd.io/etcd/etcdserver/api/membership"
-	"go.etcd.io/etcd/etcdserver/api/v2auth"
-	"go.etcd.io/etcd/etcdserver/api/v2error"
-	"go.etcd.io/etcd/etcdserver/api/v2http/httptypes"
-	stats "go.etcd.io/etcd/etcdserver/api/v2stats"
-	"go.etcd.io/etcd/etcdserver/api/v2store"
-	"go.etcd.io/etcd/etcdserver/etcdserverpb"
-	"go.etcd.io/etcd/pkg/types"
+	"go.etcd.io/etcd/v3/etcdserver"
+	"go.etcd.io/etcd/v3/etcdserver/api"
+	"go.etcd.io/etcd/v3/etcdserver/api/etcdhttp"
+	"go.etcd.io/etcd/v3/etcdserver/api/membership"
+	"go.etcd.io/etcd/v3/etcdserver/api/v2auth"
+	"go.etcd.io/etcd/v3/etcdserver/api/v2error"
+	"go.etcd.io/etcd/v3/etcdserver/api/v2http/httptypes"
+	stats "go.etcd.io/etcd/v3/etcdserver/api/v2stats"
+	"go.etcd.io/etcd/v3/etcdserver/api/v2store"
+	"go.etcd.io/etcd/v3/etcdserver/etcdserverpb"
+	"go.etcd.io/etcd/v3/pkg/types"
 
 	"github.com/jonboulle/clockwork"
 	"go.uber.org/zap"
@@ -55,9 +55,15 @@ const (
 
 // NewClientHandler generates a muxed http.Handler with the given parameters to serve etcd client requests.
 func NewClientHandler(lg *zap.Logger, server etcdserver.ServerPeer, timeout time.Duration) http.Handler {
+<<<<<<< HEAD
 
+=======
+	if lg == nil {
+		lg = zap.NewNop()
+	}
+>>>>>>> master
 	mux := http.NewServeMux()
-	etcdhttp.HandleBasic(mux, server)
+	etcdhttp.HandleBasic(lg, mux, server)
 	handleV2(lg, mux, server, timeout)
 	return requestLogger(lg, mux)
 }
@@ -169,11 +175,7 @@ func (h *keysHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case resp.Event != nil:
 		if err := writeKeyEvent(w, resp, noValueOnSuccess); err != nil {
 			// Should never be reached
-			if h.lg != nil {
-				h.lg.Warn("failed to write key event", zap.Error(err))
-			} else {
-				plog.Errorf("error writing event (%v)", err)
-			}
+			h.lg.Warn("failed to write key event", zap.Error(err))
 		}
 		reportRequestCompleted(rr, startTime)
 	case resp.Watcher != nil:
@@ -232,11 +234,7 @@ func (h *membersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			mc := newMemberCollection(h.cluster.Members())
 			w.Header().Set("Content-Type", "application/json")
 			if err := json.NewEncoder(w).Encode(mc); err != nil {
-				if h.lg != nil {
-					h.lg.Warn("failed to encode members response", zap.Error(err))
-				} else {
-					plog.Warningf("failed to encode members response (%v)", err)
-				}
+				h.lg.Warn("failed to encode members response", zap.Error(err))
 			}
 
 		case "leader":
@@ -250,11 +248,7 @@ func (h *membersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			m := newMember(h.cluster.Member(id))
 			w.Header().Set("Content-Type", "application/json")
 			if err := json.NewEncoder(w).Encode(m); err != nil {
-				if h.lg != nil {
-					h.lg.Warn("failed to encode members response", zap.Error(err))
-				} else {
-					plog.Warningf("failed to encode members response (%v)", err)
-				}
+				h.lg.Warn("failed to encode members response", zap.Error(err))
 			}
 		default:
 			writeError(h.lg, w, r, httptypes.NewHTTPError(http.StatusNotFound, "Not found"))
@@ -275,15 +269,11 @@ func (h *membersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeError(h.lg, w, r, httptypes.NewHTTPError(http.StatusConflict, err.Error()))
 			return
 		case err != nil:
-			if h.lg != nil {
-				h.lg.Warn(
-					"failed to add a member",
-					zap.String("member-id", m.ID.String()),
-					zap.Error(err),
-				)
-			} else {
-				plog.Errorf("error adding member %s (%v)", m.ID, err)
-			}
+			h.lg.Warn(
+				"failed to add a member",
+				zap.String("member-id", m.ID.String()),
+				zap.Error(err),
+			)
 			writeError(h.lg, w, r, err)
 			return
 		}
@@ -291,11 +281,7 @@ func (h *membersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		if err := json.NewEncoder(w).Encode(res); err != nil {
-			if h.lg != nil {
-				h.lg.Warn("failed to encode members response", zap.Error(err))
-			} else {
-				plog.Warningf("failed to encode members response (%v)", err)
-			}
+			h.lg.Warn("failed to encode members response", zap.Error(err))
 		}
 
 	case "DELETE":
@@ -312,15 +298,11 @@ func (h *membersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case err == membership.ErrIDNotFound:
 			writeError(h.lg, w, r, httptypes.NewHTTPError(http.StatusNotFound, fmt.Sprintf("No such member: %s", id)))
 		case err != nil:
-			if h.lg != nil {
-				h.lg.Warn(
-					"failed to remove a member",
-					zap.String("member-id", id.String()),
-					zap.Error(err),
-				)
-			} else {
-				plog.Errorf("error removing member %s (%v)", id, err)
-			}
+			h.lg.Warn(
+				"failed to remove a member",
+				zap.String("member-id", id.String()),
+				zap.Error(err),
+			)
 			writeError(h.lg, w, r, err)
 		default:
 			w.WriteHeader(http.StatusNoContent)
@@ -348,15 +330,11 @@ func (h *membersHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case err == membership.ErrIDNotFound:
 			writeError(h.lg, w, r, httptypes.NewHTTPError(http.StatusNotFound, fmt.Sprintf("No such member: %s", id)))
 		case err != nil:
-			if h.lg != nil {
-				h.lg.Warn(
-					"failed to update a member",
-					zap.String("member-id", m.ID.String()),
-					zap.Error(err),
-				)
-			} else {
-				plog.Errorf("error updating member %s (%v)", m.ID, err)
-			}
+			h.lg.Warn(
+				"failed to update a member",
+				zap.String("member-id", m.ID.String()),
+				zap.Error(err),
+			)
 			writeError(h.lg, w, r, err)
 		default:
 			w.WriteHeader(http.StatusNoContent)
@@ -633,8 +611,6 @@ func writeKeyError(lg *zap.Logger, w http.ResponseWriter, err error) {
 					"v2 response error",
 					zap.String("internal-server-error", err.Error()),
 				)
-			} else {
-				mlog.MergeError(err)
 			}
 		default:
 			if lg != nil {
@@ -642,8 +618,6 @@ func writeKeyError(lg *zap.Logger, w http.ResponseWriter, err error) {
 					"unexpected v2 response error",
 					zap.String("internal-server-error", err.Error()),
 				)
-			} else {
-				mlog.MergeErrorf("got unexpected response error (%v)", err)
 			}
 		}
 		ee := v2error.NewError(v2error.EcodeRaftInternal, err.Error(), 0)
@@ -687,11 +661,7 @@ func handleKeyWatch(ctx context.Context, lg *zap.Logger, w http.ResponseWriter, 
 			ev = trimEventPrefix(ev, etcdserver.StoreKeysPrefix)
 			if err := json.NewEncoder(w).Encode(ev); err != nil {
 				// Should never be reached
-				if lg != nil {
-					lg.Warn("failed to encode event", zap.Error(err))
-				} else {
-					plog.Warningf("error writing event (%v)", err)
-				}
+				lg.Warn("failed to encode event", zap.Error(err))
 				return
 			}
 			if !stream {

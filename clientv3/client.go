@@ -26,18 +26,17 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"go.etcd.io/etcd/clientv3/balancer"
-	"go.etcd.io/etcd/clientv3/balancer/picker"
-	"go.etcd.io/etcd/clientv3/balancer/resolver/endpoint"
-	"go.etcd.io/etcd/clientv3/credentials"
-	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
-	"go.etcd.io/etcd/pkg/logutil"
+	"go.etcd.io/etcd/v3/clientv3/balancer"
+	"go.etcd.io/etcd/v3/clientv3/balancer/picker"
+	"go.etcd.io/etcd/v3/clientv3/balancer/resolver/endpoint"
+	"go.etcd.io/etcd/v3/clientv3/credentials"
+	"go.etcd.io/etcd/v3/etcdserver/api/v3rpc/rpctypes"
+	"go.etcd.io/etcd/v3/pkg/logutil"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	grpccredentials "google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -113,7 +112,7 @@ func New(cfg Config) (*Client, error) {
 // service interface implementations and do not need connection management.
 func NewCtxClient(ctx context.Context) *Client {
 	cctx, cancel := context.WithCancel(ctx)
-	return &Client{ctx: cctx, cancel: cancel}
+	return &Client{ctx: cctx, cancel: cancel, lg: zap.NewNop()}
 }
 
 // NewFromURL creates a new etcdv3 client from a URL.
@@ -124,6 +123,12 @@ func NewFromURL(url string) (*Client, error) {
 // NewFromURLs creates a new etcdv3 client from URLs.
 func NewFromURLs(urls []string) (*Client, error) {
 	return New(Config{Endpoints: urls})
+}
+
+// WithLogger sets a logger
+func (c *Client) WithLogger(lg *zap.Logger) *Client {
+	c.lg = lg
+	return c
 }
 
 // Close shuts down the client's etcd connections.
@@ -233,10 +238,6 @@ func (c *Client) dialSetupOpts(creds grpccredentials.TransportCredentials, dopts
 	dialer := endpoint.Dialer
 	if creds != nil {
 		opts = append(opts, grpc.WithTransportCredentials(creds))
-		// gRPC load balancer workaround. See credentials.transportCredential for details.
-		if credsDialer, ok := creds.(TransportCredentialsWithDialer); ok {
-			dialer = credsDialer.Dialer
-		}
 	} else {
 		opts = append(opts, grpc.WithInsecure())
 	}
@@ -397,13 +398,6 @@ func (c *Client) dialWithBalancerCreds(ep string) grpccredentials.TransportCrede
 	return creds
 }
 
-// WithRequireLeader requires client requests to only succeed
-// when the cluster has a leader.
-func WithRequireLeader(ctx context.Context) context.Context {
-	md := metadata.Pairs(rpctypes.MetadataRequireLeaderKey, rpctypes.MetadataHasLeader)
-	return metadata.NewOutgoingContext(ctx, md)
-}
-
 func newClient(cfg *Config) (*Client, error) {
 	if cfg == nil {
 		cfg = &Config{}
@@ -472,7 +466,8 @@ func newClient(cfg *Config) (*Client, error) {
 	client.resolverGroup.SetEndpoints(cfg.Endpoints)
 
 	if len(cfg.Endpoints) < 1 {
-		return nil, fmt.Errorf("at least one Endpoint must is required in client config")
+		client.cancel()
+		return nil, fmt.Errorf("at least one Endpoint is required in client config")
 	}
 	dialEndpoint := cfg.Endpoints[0]
 
@@ -663,10 +658,4 @@ func IsConnCanceled(err error) bool {
 
 	// <= gRPC v1.7.x returns 'errors.New("grpc: the client connection is closing")'
 	return strings.Contains(err.Error(), "grpc: the client connection is closing")
-}
-
-// TransportCredentialsWithDialer is for a gRPC load balancer workaround. See credentials.transportCredential for details.
-type TransportCredentialsWithDialer interface {
-	grpccredentials.TransportCredentials
-	Dialer(ctx context.Context, dialEp string) (net.Conn, error)
 }

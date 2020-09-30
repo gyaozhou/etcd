@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"go.etcd.io/etcd/embed"
+	"go.etcd.io/etcd/v3/embed"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -164,6 +164,8 @@ Auth:
     Specify a v3 authentication token type and its options ('simple' or 'jwt').
   --bcrypt-cost ` + fmt.Sprintf("%d", bcrypt.DefaultCost) + `
     Specify the cost / strength of the bcrypt algorithm for hashing auth passwords. Valid values are between ` + fmt.Sprintf("%d", bcrypt.MinCost) + ` and ` + fmt.Sprintf("%d", bcrypt.MaxCost) + `.
+  --auth-token-ttl 300
+    Time (in seconds) of the auth-token-ttl.
 
 Profiling and Monitoring:
   --enable-pprof 'false'
@@ -174,8 +176,8 @@ Profiling and Monitoring:
     List of URLs to listen on for the metrics and health endpoints.
 
 Logging:
-  --logger 'capnslog'
-    Specify 'zap' for structured logging or 'capnslog'. [WARN] 'capnslog' will be deprecated in v3.5.
+  --logger 'zap'
+    Currently only supports 'zap' for structured logging.
   --log-outputs 'default'
     Specify 'stdout' or 'stderr' to skip journald logging even when running under systemd, or list of comma separated output targets.
   --log-level 'info'
@@ -212,14 +214,11 @@ Experimental feature:
 Unsafe feature:
   --force-new-cluster 'false'
     Force to create a new one-member cluster.
+  --unsafe-no-fsync 'false'
+    Disables fsync, unsafe, will cause data loss.
 
 CAUTIOUS with unsafe flag! It may break the guarantees given by the consensus protocol!
-
-TO BE DEPRECATED:
-
-  --debug 'false'
-    Enable debug-level logging for etcd. [WARN] Will be deprecated in v3.5. Use '--log-level=debug' instead.
-  --log-package-levels ''
-    Specify a particular log level for each etcd package (eg: 'etcdmain=CRITICAL,etcdserver=DEBUG').
 `
 )
+
+// Add back "TO BE DEPRECATED" section if needed
