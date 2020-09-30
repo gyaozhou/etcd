@@ -17,23 +17,17 @@ package etcdmain
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/coreos/go-systemd/v22/daemon"
 	"go.uber.org/zap"
 )
 
-// zhou: entry of etcd command
-func Main() {
+// zhou: entry of etcd command		
+func Main(args []string) {
 	checkSupportArch()
 
-	if len(os.Args) > 1 {
-		cmd := os.Args[1]
-		if covArgs := os.Getenv("ETCDCOV_ARGS"); len(covArgs) > 0 {
-			args := strings.Split(os.Getenv("ETCDCOV_ARGS"), "\xe7\xcd")[1:]
-			rootCmd.SetArgs(args)
-			cmd = "grpc-proxy"
-		}
+	if len(args) > 1 {
+		cmd := args[1]
 		switch cmd {
 		case "gateway", "grpc-proxy":
 			if err := rootCmd.Execute(); err != nil {
@@ -44,8 +38,8 @@ func Main() {
 		}
 	}
 
-	// zhou: etcd could run in either "etcd" or "proxy" modes, which depending on the arguments.
-	startEtcdOrProxyV2()
+// zhou: etcd could run in either "etcd" or "proxy" modes, which depending on the arguments.		
+	startEtcdOrProxyV2(args)
 }
 
 // zhou: let systemd status be ready.

@@ -300,8 +300,9 @@ type Config struct {
 	ExperimentalCorruptCheckTime    time.Duration `json:"experimental-corrupt-check-time"`
 	ExperimentalEnableV2V3          string        `json:"experimental-enable-v2v3"`
 	// ExperimentalEnableLeaseCheckpoint enables primary lessor to persist lease remainingTTL to prevent indefinite auto-renewal of long lived leases.
-	ExperimentalEnableLeaseCheckpoint bool `json:"experimental-enable-lease-checkpoint"`
-	ExperimentalCompactionBatchLimit  int  `json:"experimental-compaction-batch-limit"`
+	ExperimentalEnableLeaseCheckpoint       bool          `json:"experimental-enable-lease-checkpoint"`
+	ExperimentalCompactionBatchLimit        int           `json:"experimental-compaction-batch-limit"`
+	ExperimentalWatchProgressNotifyInterval time.Duration `json:"experimental-watch-progress-notify-interval"`
 
 	// ForceNewCluster starts a new cluster even if previously started; unsafe.
 	ForceNewCluster bool `json:"force-new-cluster"`
@@ -341,7 +342,8 @@ type Config struct {
 	loggerCore        zapcore.Core
 	loggerWriteSyncer zapcore.WriteSyncer
 
-	// EnableGRPCGateway is false to disable grpc gateway.
+	// EnableGRPCGateway enables grpc gateway.
+	// The gateway translates a RESTful HTTP API into gRPC.
 	EnableGRPCGateway bool `json:"enable-grpc-gateway"`
 
 	// UnsafeNoFsync disables all uses of fsync.
@@ -428,11 +430,12 @@ func NewConfig() *Config {
 
 		PreVote: false, // TODO: enable by default in v3.5
 
-		loggerMu:   new(sync.RWMutex),
-		logger:     nil,
-		Logger:     "zap",
-		LogOutputs: []string{DefaultLogOutput},
-		LogLevel:   logutil.DefaultLogLevel,
+		loggerMu:          new(sync.RWMutex),
+		logger:            nil,
+		Logger:            "zap",
+		LogOutputs:        []string{DefaultLogOutput},
+		LogLevel:          logutil.DefaultLogLevel,
+		EnableGRPCGateway: true,
 	}
 	cfg.InitialCluster = cfg.InitialClusterFromName(cfg.Name)
 	return cfg

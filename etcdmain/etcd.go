@@ -49,16 +49,15 @@ var (
 	dirEmpty  = dirType("empty")
 )
 
-// zhou: binary 'etcd' run in core mode or proxy mode
-func startEtcdOrProxyV2() {
+// zhou: binary 'etcd' run in core mode or proxy mode		
+func startEtcdOrProxyV2(args []string) {
 	grpc.EnableTracing = false
 
 	// zhou: set up cli descriptors and instance of config object.
 	cfg := newConfig()
 	defaultInitialCluster := cfg.ec.InitialCluster
 
-	// zhou: 
-	err := cfg.parse(os.Args[1:])
+	err := cfg.parse(args[1:])
 	lg := cfg.ec.GetLogger()
 	if lg == nil {
 		var zapError error
@@ -69,6 +68,7 @@ func startEtcdOrProxyV2() {
 			os.Exit(1)
 		}
 	}
+	lg.Info("Running: ", zap.Strings("args", args))
 	if err != nil {
 		lg.Warn("failed to verify flags", zap.Error(err))
 		switch err {
@@ -143,24 +143,12 @@ func startEtcdOrProxyV2() {
 				// zhou: when discovery service failed, fallback behavior.
 				//       Set by "--discovery-fallback"
 				if cfg.shouldFallbackToProxy() {
-<<<<<<< HEAD
-					if lg != nil {
-						lg.Warn(
-							"discovery cluster is full, falling back to proxy",
-							zap.String("fallback-proxy", fallbackFlagProxy),
-							zap.Error(err),
-						)
-					} else {
-						plog.Noticef("discovery cluster full, falling back to %s", fallbackFlagProxy)
-					}
-					// zhou: fallback to proxy when new node.
-=======
 					lg.Warn(
 						"discovery cluster is full, falling back to proxy",
 						zap.String("fallback-proxy", fallbackFlagProxy),
 						zap.Error(err),
-					)
->>>>>>> master
+				)
+					// zhou: fallback to proxy when new node.					
 					shouldProxy = true
 				}
 			} else if err != nil {
@@ -214,16 +202,7 @@ func startEtcdOrProxyV2() {
 		}
 
 		if strings.Contains(err.Error(), "include") && strings.Contains(err.Error(), "--initial-cluster") {
-<<<<<<< HEAD
-			if lg != nil {
-				lg.Warn("failed to start", zap.Error(err))
-			} else {
-				plog.Infof("%v", err)
-			}
-
-=======
 			lg.Warn("failed to start", zap.Error(err))
->>>>>>> master
 			if cfg.ec.InitialCluster == cfg.ec.InitialClusterFromName(cfg.ec.Name) {
 				lg.Warn("forgot to set --initial-cluster?")
 			}
@@ -237,16 +216,7 @@ func startEtcdOrProxyV2() {
 			}
 			os.Exit(1)
 		}
-<<<<<<< HEAD
-
-		if lg != nil {
-			lg.Fatal("discovery failed", zap.Error(err))
-		} else {
-			plog.Fatalf("%v", err)
-		}
-=======
 		lg.Fatal("discovery failed", zap.Error(err))
->>>>>>> master
 	}
 
 	osutil.HandleInterrupts(lg)

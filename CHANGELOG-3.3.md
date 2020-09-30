@@ -5,7 +5,44 @@ Previous change logs can be found at [CHANGELOG-3.2](https://github.com/etcd-io/
 
 The minimum recommended etcd versions to run in **production** are 3.2.28+, 3.3.18+, and 3.4.2+.
 
+
 <hr>
+
+
+## v3.3.25 (2020 TBD)
+
+See [code changes](https://github.com/etcd-io/etcd/compare/v3.3.23...v3.3.25) and [v3.3 upgrade guide](https://github.com/etcd-io/etcd/blob/master/Documentation/upgrades/upgrade_3_3.md) for any breaking changes.
+
+### Security
+
+- A [log warning](https://github.com/etcd-io/etcd/pull/12242) is added when etcd use any existing directory that has a permission different than 700 on Linux and 777 on Windows.
+
+
+## [v3.3.24](https://github.com/etcd-io/etcd/releases/tag/v3.3.24) (2020-08-18)
+
+See [code changes](https://github.com/etcd-io/etcd/compare/v3.3.23...v3.3.24) and [v3.3 upgrade guide](https://github.com/etcd-io/etcd/blob/master/Documentation/upgrades/upgrade_3_3.md) for any breaking changes.
+
+### Package `etcd server`
+
+- Fix [`int64` convert panic in raft logger](https://github.com/etcd-io/etcd/pull/12106).
+  - Fix [kubernetes/kubernetes#91937](https://github.com/kubernetes/kubernetes/issues/91937).
+
+### Package `runtime`
+
+- Optimize [`runtime.FDUsage` by removing unnecessary sorting](https://github.com/etcd-io/etcd/pull/12214).
+
+### Metrics, Monitoring
+
+- Add [`os_fd_used` and `os_fd_limit` to monitor current OS file descriptors](https://github.com/etcd-io/etcd/pull/12214).
+
+### Go
+
+- Compile with [*Go 1.12.17*](https://golang.org/doc/devel/release.html#go1.12).
+
+
+
+<hr>
+
 
 
 ## [v3.3.23](https://github.com/etcd-io/etcd/releases/tag/v3.3.23) (2020-07-16)
@@ -25,7 +62,6 @@ See [code changes](https://github.com/etcd-io/etcd/compare/v3.3.22...v3.3.23) an
 - Add [etcd --auth-token-ttl](https://github.com/etcd-io/etcd/pull/11980) flag to customize `simpleTokenTTL` settings.
 - Improve [runtime.FDUsage objects malloc of Memory Usage and CPU Usage](https://github.com/etcd-io/etcd/pull/11986).
 - Improve [mvcc.watchResponse channel Memory Usage](https://github.com/etcd-io/etcd/pull/11987).
-
 
 ### Go
 

@@ -60,8 +60,6 @@ See [code changes](https://github.com/etcd-io/etcd/compare/v3.4.0...v3.5.0) and 
 - Changed `pkg/flags` function signature to [support structured logger](https://github.com/etcd-io/etcd/pull/11616).
   - Previously, `SetFlagsFromEnv(prefix string, fs *flag.FlagSet) error`, now `SetFlagsFromEnv(lg *zap.Logger, prefix string, fs *flag.FlagSet) error`.
   - Previously, `SetPflagsFromEnv(prefix string, fs *pflag.FlagSet) error`, now `SetPflagsFromEnv(lg *zap.Logger, prefix string, fs *pflag.FlagSet) error`.
-- Changed behavior on [existing dir permission](https://github.com/etcd-io/etcd/pull/11798).
-  - Previously, the permission was not checked on existing data directory and the directory used for automatically generating self-signed certificates for TLS connections with clients. Now a check is added to make sure those directories, if already exist, has a desired permission of 700 on Linux and 777 on Windows.
 
 ### `etcdctl`
 
@@ -71,6 +69,8 @@ See [code changes](https://github.com/etcd-io/etcd/compare/v3.4.0...v3.5.0) and 
 
 - Add [`TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256` and `TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256` to `etcd --cipher-suites`](https://github.com/etcd-io/etcd/pull/11864).
 - Changed [the format of WAL entries related to auth for not keeping password as a plain text](https://github.com/etcd-io/etcd/pull/11943).
+- Add third party [Security Audit Report](https://github.com/etcd-io/etcd/pull/12201).
+- A [log warning](https://github.com/etcd-io/etcd/pull/12242) is added when etcd use any existing directory that has a permission different than 700 on Linux and 777 on Windows.
 
 ### Metrics, Monitoring
 
@@ -90,6 +90,7 @@ Note that any `etcd_debugging_*` metrics are experimental and subject to change.
 - Add [`etcd_server_client_requests_total` with `"type"` and `"client_api_version"` labels](https://github.com/etcd-io/etcd/pull/11687).
 - Add [`etcd_wal_write_bytes_total`](https://github.com/etcd-io/etcd/pull/11738).
 - Add [`etcd_debugging_auth_revision`](https://github.com/etcd-io/etcd/commit/f14d2a087f7b0fd6f7980b95b5e0b945109c95f3).
+- Add [`os_fd_used` and `os_fd_limit` to monitor current OS file descriptors](https://github.com/etcd-io/etcd/pull/12214).
 
 ### etcd server
 
@@ -129,19 +130,32 @@ Note that any `etcd_debugging_*` metrics are experimental and subject to change.
 - Add [`--unsafe-no-fsync`](https://github.com/etcd-io/etcd/pull/11946) flag.
   - Setting the flag disables all uses of fsync, which is unsafe and will cause data loss. This flag makes it possible to run an etcd node for testing and development without placing lots of load on the file system.
 - Add [etcd --auth-token-ttl](https://github.com/etcd-io/etcd/pull/11980) flag to customize `simpleTokenTTL` settings.
-- Improve [runtime.FDUsage objects malloc of Memory Usage and CPU Usage](https://github.com/etcd-io/etcd/pull/11986).
+- Improve [`runtime.FDUsage` call pattern to reduce objects malloc of Memory Usage and CPU Usage](https://github.com/etcd-io/etcd/pull/11986).
 - Improve [mvcc.watchResponse channel Memory Usage](https://github.com/etcd-io/etcd/pull/11987).
 - Log [expensive request info in UnaryInterceptor](https://github.com/etcd-io/etcd/pull/12086).
 - [Fix invalid Go type in etcdserverpb](https://github.com/etcd-io/etcd/pull/12000).
+- [Improve healthcheck by using v3 range request and its corresponding timeout](https://github.com/etcd-io/etcd/pull/12195).
+- Add [`etcd --experimental-watch-progress-notify-interval`](https://github.com/etcd-io/etcd/pull/12216) flag to make watch progress notify interval configurable.
+- Fix [server panic in slow writes warnings](https://github.com/etcd-io/etcd/issues/12197).
+  - Fixed via [PR#12238](https://github.com/etcd-io/etcd/pull/12238).
+- [Fix server panic](https://github.com/etcd-io/etcd/pull/12288) when force-new-cluster flag is enabled in a cluster which had learner node.
+
+
+### Package `runtime`
+
+- Optimize [`runtime.FDUsage` by removing unnecessary sorting](https://github.com/etcd-io/etcd/pull/12214).
 
 ### Package `embed`
 
 - Remove [`embed.Config.Debug`](https://github.com/etcd-io/etcd/pull/10947).
   - Use `embed.Config.LogLevel` instead.
 - Add [`embed.Config.ZapLoggerBuilder`](https://github.com/etcd-io/etcd/pull/11147) to allow creating a custom zap logger.
+- Replace [global `*zap.Logger` with etcd server logger object](https://github.com/etcd-io/etcd/pull/12212).
 
 ### Package `clientv3`
 
+- Remove [excessive watch cancel logging messages](https://github.com/etcd-io/etcd/pull/12187).
+  - See [kubernetes/kubernetes#93450](https://github.com/kubernetes/kubernetes/issues/93450).
 - Add [`TryLock`](https://github.com/etcd-io/etcd/pull/11104) method to `clientv3/concurrency/Mutex`. A non-blocking method on `Mutex` which does not wait to get lock on the Mutex, returns immediately if Mutex is locked by another session.
 - Fix [client balancer failover against multiple endpoints](https://github.com/etcd-io/etcd/pull/11184).
   - Fix [`"kube-apiserver: failover on multi-member etcd cluster fails certificate check on DNS mismatch"`](https://github.com/kubernetes/kubernetes/issues/83028).
@@ -204,6 +218,7 @@ Note that any `etcd_debugging_*` metrics are experimental and subject to change.
 ### Dependency
 
 - Upgrade [`google.golang.org/grpc`](https://github.com/grpc/grpc-go/releases) from [**`v1.23.0`**](https://github.com/grpc/grpc-go/releases/tag/v1.23.0) to [**`v1.26.0`**](https://github.com/grpc/grpc-go/releases/tag/v1.26.0).
+- Upgrade [`go.uber.org/zap`](https://github.com/uber-go/zap/releases) from [**`v1.14.1`**](https://github.com/uber-go/zap/releases/tag/v1.14.1) to [**`v1.15.0`**](https://github.com/uber-go/zap/releases/tag/v1.15.0).
 
 ### Release
 
@@ -211,8 +226,9 @@ Note that any `etcd_debugging_*` metrics are experimental and subject to change.
 
 ### Go
 
-- Require [*Go 1.14+*](https://github.com/etcd-io/etcd/pull/11110).
-- Compile with [*Go 1.14*](https://golang.org/doc/devel/release.html#go1.14)
+- Require [*Go 1.15+*](https://github.com/etcd-io/etcd/pull/11110).
+- Compile with [*Go 1.15*](https://golang.org/doc/devel/release.html#go1.15)
+- etcd uses go [modules](https://github.com/etcd-io/etcd/pull/12279) (instead of vendor dir) to track dependencies.
 
 ### Project Governance
 

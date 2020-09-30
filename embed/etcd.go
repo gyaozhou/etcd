@@ -187,51 +187,52 @@ func StartEtcd(inCfg *Config) (e *Etcd, err error) {
 
 	// zhou:
 	srvcfg := etcdserver.ServerConfig{
-		Name:                       cfg.Name,
-		ClientURLs:                 cfg.ACUrls,
-		PeerURLs:                   cfg.APUrls,
-		DataDir:                    cfg.Dir,
-		DedicatedWALDir:            cfg.WalDir,
-		SnapshotCount:              cfg.SnapshotCount,
-		SnapshotCatchUpEntries:     cfg.SnapshotCatchUpEntries,
-		MaxSnapFiles:               cfg.MaxSnapFiles,
-		MaxWALFiles:                cfg.MaxWalFiles,
-		InitialPeerURLsMap:         urlsmap,
-		InitialClusterToken:        token,
-		DiscoveryURL:               cfg.Durl,
-		DiscoveryProxy:             cfg.Dproxy,
-		NewCluster:                 cfg.IsNewCluster(),
-		PeerTLSInfo:                cfg.PeerTLSInfo,
-		TickMs:                     cfg.TickMs,
-		ElectionTicks:              cfg.ElectionTicks(),
-		InitialElectionTickAdvance: cfg.InitialElectionTickAdvance,
-		AutoCompactionRetention:    autoCompactionRetention,
-		AutoCompactionMode:         cfg.AutoCompactionMode,
-		QuotaBackendBytes:          cfg.QuotaBackendBytes,
-		BackendBatchLimit:          cfg.BackendBatchLimit,
-		BackendFreelistType:        backendFreelistType,
-		BackendBatchInterval:       cfg.BackendBatchInterval,
-		MaxTxnOps:                  cfg.MaxTxnOps,
-		MaxRequestBytes:            cfg.MaxRequestBytes,
-		StrictReconfigCheck:        cfg.StrictReconfigCheck,
-		ClientCertAuthEnabled:      cfg.ClientTLSInfo.ClientCertAuth,
-		AuthToken:                  cfg.AuthToken,
-		BcryptCost:                 cfg.BcryptCost,
-		TokenTTL:                   cfg.AuthTokenTTL,
-		CORS:                       cfg.CORS,
-		HostWhitelist:              cfg.HostWhitelist,
-		InitialCorruptCheck:        cfg.ExperimentalInitialCorruptCheck,
-		CorruptCheckTime:           cfg.ExperimentalCorruptCheckTime,
-		PreVote:                    cfg.PreVote,
-		Logger:                     cfg.logger,
-		LoggerConfig:               cfg.loggerConfig,
-		LoggerCore:                 cfg.loggerCore,
-		LoggerWriteSyncer:          cfg.loggerWriteSyncer,
-		ForceNewCluster:            cfg.ForceNewCluster,
-		EnableGRPCGateway:          cfg.EnableGRPCGateway,
-		UnsafeNoFsync:              cfg.UnsafeNoFsync,
-		EnableLeaseCheckpoint:      cfg.ExperimentalEnableLeaseCheckpoint,
-		CompactionBatchLimit:       cfg.ExperimentalCompactionBatchLimit,
+		Name:                        cfg.Name,
+		ClientURLs:                  cfg.ACUrls,
+		PeerURLs:                    cfg.APUrls,
+		DataDir:                     cfg.Dir,
+		DedicatedWALDir:             cfg.WalDir,
+		SnapshotCount:               cfg.SnapshotCount,
+		SnapshotCatchUpEntries:      cfg.SnapshotCatchUpEntries,
+		MaxSnapFiles:                cfg.MaxSnapFiles,
+		MaxWALFiles:                 cfg.MaxWalFiles,
+		InitialPeerURLsMap:          urlsmap,
+		InitialClusterToken:         token,
+		DiscoveryURL:                cfg.Durl,
+		DiscoveryProxy:              cfg.Dproxy,
+		NewCluster:                  cfg.IsNewCluster(),
+		PeerTLSInfo:                 cfg.PeerTLSInfo,
+		TickMs:                      cfg.TickMs,
+		ElectionTicks:               cfg.ElectionTicks(),
+		InitialElectionTickAdvance:  cfg.InitialElectionTickAdvance,
+		AutoCompactionRetention:     autoCompactionRetention,
+		AutoCompactionMode:          cfg.AutoCompactionMode,
+		QuotaBackendBytes:           cfg.QuotaBackendBytes,
+		BackendBatchLimit:           cfg.BackendBatchLimit,
+		BackendFreelistType:         backendFreelistType,
+		BackendBatchInterval:        cfg.BackendBatchInterval,
+		MaxTxnOps:                   cfg.MaxTxnOps,
+		MaxRequestBytes:             cfg.MaxRequestBytes,
+		StrictReconfigCheck:         cfg.StrictReconfigCheck,
+		ClientCertAuthEnabled:       cfg.ClientTLSInfo.ClientCertAuth,
+		AuthToken:                   cfg.AuthToken,
+		BcryptCost:                  cfg.BcryptCost,
+		TokenTTL:                    cfg.AuthTokenTTL,
+		CORS:                        cfg.CORS,
+		HostWhitelist:               cfg.HostWhitelist,
+		InitialCorruptCheck:         cfg.ExperimentalInitialCorruptCheck,
+		CorruptCheckTime:            cfg.ExperimentalCorruptCheckTime,
+		PreVote:                     cfg.PreVote,
+		Logger:                      cfg.logger,
+		LoggerConfig:                cfg.loggerConfig,
+		LoggerCore:                  cfg.loggerCore,
+		LoggerWriteSyncer:           cfg.loggerWriteSyncer,
+		ForceNewCluster:             cfg.ForceNewCluster,
+		EnableGRPCGateway:           cfg.EnableGRPCGateway,
+		UnsafeNoFsync:               cfg.UnsafeNoFsync,
+		EnableLeaseCheckpoint:       cfg.ExperimentalEnableLeaseCheckpoint,
+		CompactionBatchLimit:        cfg.ExperimentalCompactionBatchLimit,
+		WatchProgressNotifyInterval: cfg.ExperimentalWatchProgressNotifyInterval,
 	}
 	
 	print(e.cfg.logger, *cfg, srvcfg, memberInitialized)
@@ -683,6 +684,7 @@ func (e *Etcd) serveClients() (err error) {
 
 		mux := http.NewServeMux()
 		etcdhttp.HandleBasic(e.cfg.logger, mux, e.Server)
+		etcdhttp.HandleMetricsHealthForV3(e.cfg.logger, mux, e.Server)
 		h = mux
 	}
 
@@ -718,7 +720,7 @@ func (e *Etcd) serveMetrics() (err error) {
 
 	if len(e.cfg.ListenMetricsUrls) > 0 {
 		metricsMux := http.NewServeMux()
-		etcdhttp.HandleMetricsHealth(e.cfg.logger, metricsMux, e.Server)
+		etcdhttp.HandleMetricsHealthForV3(e.cfg.logger, metricsMux, e.Server)
 
 		for _, murl := range e.cfg.ListenMetricsUrls {
 			tlsInfo := &e.cfg.ClientTLSInfo

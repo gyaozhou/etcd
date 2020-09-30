@@ -141,7 +141,7 @@ func warnOfExpensiveReadOnlyTxnRequest(lg *zap.Logger, now time.Time, r *pb.TxnR
 		}
 		resp = fmt.Sprintf("responses:<%s> size:%d", strings.Join(resps, " "), proto.Size(txnResponse))
 	}
-	warnOfExpensiveGenericRequest(lg, now, reqStringer, "read-only range ", resp, err)
+	warnOfExpensiveGenericRequest(lg, now, reqStringer, "read-only txn ", resp, err)
 }
 
 func warnOfExpensiveReadOnlyRangeRequest(lg *zap.Logger, now time.Time, reqStringer fmt.Stringer, rangeResponse *pb.RangeResponse, err error) {
@@ -170,4 +170,22 @@ func warnOfExpensiveGenericRequest(lg *zap.Logger, now time.Time, reqStringer fm
 
 func isNil(msg proto.Message) bool {
 	return msg == nil || reflect.ValueOf(msg).IsNil()
+}
+
+// panicAlternativeStringer wraps a fmt.Stringer, and if calling String() panics, calls the alternative instead.
+// This is needed to ensure logging slow v2 requests does not panic, which occurs when running integration tests
+// with the embedded server with github.com/golang/protobuf v1.4.0+. See https://github.com/etcd-io/etcd/issues/12197.
+type panicAlternativeStringer struct {
+	stringer    fmt.Stringer
+	alternative func() string
+}
+
+func (n panicAlternativeStringer) String() (s string) {
+	defer func() {
+		if err := recover(); err != nil {
+			s = n.alternative()
+		}
+	}()
+	s = n.stringer.String()
+	return s
 }

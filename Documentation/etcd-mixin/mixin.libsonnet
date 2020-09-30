@@ -7,6 +7,9 @@
     // instances are deployed on K8s, you will likely want to change
     // this to 'instance, pod'.
     etcd_instance_labels: 'instance',
+    // scrape_interval_seconds is the global scrape interval which can be
+    // used to dynamically adjust rate windows as a function of the interval.
+    scrape_interval_seconds: 30,
   },
 
   prometheusAlerts+:: {
@@ -21,17 +24,18 @@
                 sum without (%(etcd_instance_labels)s) (up{%(etcd_selector)s} == bool 0)
               or
                 count without (To) (
-                  sum without (%(etcd_instance_labels)s) (rate(etcd_network_peer_sent_failures_total{%(etcd_selector)s}[1m])) > 0.01
+                  sum without (%(etcd_instance_labels)s) (rate(etcd_network_peer_sent_failures_total{%(etcd_selector)s}[%(network_failure_range)ss])) > 0.01
                 )
               )
               > 0
-            ||| % $._config,
-            'for': '3m',
+            ||| % {etcd_instance_labels: $._config.etcd_instance_labels, etcd_selector: $._config.etcd_selector, network_failure_range: $._config.scrape_interval_seconds*4},
+            'for': '10m',
             labels: {
               severity: 'critical',
             },
             annotations: {
-              message: 'etcd cluster "{{ $labels.job }}": members are down ({{ $value }}).',
+              description: 'etcd cluster "{{ $labels.job }}": members are down ({{ $value }}).',
+              summary: 'etcd cluster members are down.',
             },
           },
           {
@@ -44,7 +48,8 @@
               severity: 'critical',
             },
             annotations: {
-              message: 'etcd cluster "{{ $labels.job }}": insufficient members ({{ $value }}).',
+              description: 'etcd cluster "{{ $labels.job }}": insufficient members ({{ $value }}).',
+              summary: 'etcd cluster has insufficient number of members.',
             },
           },
           {
@@ -57,7 +62,8 @@
               severity: 'critical',
             },
             annotations: {
-              message: 'etcd cluster "{{ $labels.job }}": member {{ $labels.instance }} has no leader.',
+              description: 'etcd cluster "{{ $labels.job }}": member {{ $labels.instance }} has no leader.',
+              summary: 'etcd cluster has no leader.',
             },
           },
           {
@@ -70,7 +76,8 @@
               severity: 'warning',
             },
             annotations: {
-              message: 'etcd cluster "{{ $labels.job }}": {{ $value }} leader changes within the last 15 minutes. Frequent elections may be a sign of insufficient resources, high network latency, or disruptions by other components and should be investigated.',
+              description: 'etcd cluster "{{ $labels.job }}": {{ $value }} leader changes within the last 15 minutes. Frequent elections may be a sign of insufficient resources, high network latency, or disruptions by other components and should be investigated.',
+              summary: 'etcd cluster has high number of leader changes.',
             },
           },
           {
@@ -86,7 +93,8 @@
               severity: 'warning',
             },
             annotations: {
-              message: 'etcd cluster "{{ $labels.job }}": {{ $value }}% of requests for {{ $labels.grpc_method }} failed on etcd instance {{ $labels.instance }}.',
+              description: 'etcd cluster "{{ $labels.job }}": {{ $value }}% of requests for {{ $labels.grpc_method }} failed on etcd instance {{ $labels.instance }}.',
+              summary: 'etcd cluster has high number of failed grpc requests.',
             },
           },
           {
@@ -102,7 +110,8 @@
               severity: 'critical',
             },
             annotations: {
-              message: 'etcd cluster "{{ $labels.job }}": {{ $value }}% of requests for {{ $labels.grpc_method }} failed on etcd instance {{ $labels.instance }}.',
+              description: 'etcd cluster "{{ $labels.job }}": {{ $value }}% of requests for {{ $labels.grpc_method }} failed on etcd instance {{ $labels.instance }}.',
+              summary: 'etcd cluster has high number of failed grpc requests.',
             },
           },
           {
@@ -116,7 +125,8 @@
               severity: 'critical',
             },
             annotations: {
-              message: 'etcd cluster "{{ $labels.job }}": gRPC requests to {{ $labels.grpc_method }} are taking {{ $value }}s on etcd instance {{ $labels.instance }}.',
+              description: 'etcd cluster "{{ $labels.job }}": gRPC requests to {{ $labels.grpc_method }} are taking {{ $value }}s on etcd instance {{ $labels.instance }}.',
+              summary: 'etcd grpc requests are slow',
             },
           },
           {
@@ -130,7 +140,8 @@
               severity: 'warning',
             },
             annotations: {
-              message: 'etcd cluster "{{ $labels.job }}": member communication with {{ $labels.To }} is taking {{ $value }}s on etcd instance {{ $labels.instance }}.',
+              description: 'etcd cluster "{{ $labels.job }}": member communication with {{ $labels.To }} is taking {{ $value }}s on etcd instance {{ $labels.instance }}.',
+              summary: 'etcd cluster member communication is slow.',
             },
           },
           {
@@ -143,7 +154,8 @@
               severity: 'warning',
             },
             annotations: {
-              message: 'etcd cluster "{{ $labels.job }}": {{ $value }} proposal failures within the last 30 minutes on etcd instance {{ $labels.instance }}.',
+              description: 'etcd cluster "{{ $labels.job }}": {{ $value }} proposal failures within the last 30 minutes on etcd instance {{ $labels.instance }}.',
+              summary: 'etcd cluster has high number of proposal failures.',
             },
           },
           {
@@ -157,7 +169,8 @@
               severity: 'warning',
             },
             annotations: {
-              message: 'etcd cluster "{{ $labels.job }}": 99th percentile fync durations are {{ $value }}s on etcd instance {{ $labels.instance }}.',
+              description: 'etcd cluster "{{ $labels.job }}": 99th percentile fsync durations are {{ $value }}s on etcd instance {{ $labels.instance }}.',
+              summary: 'etcd cluster 99th percentile fsync durations are too high.',
             },
           },
           {
@@ -171,7 +184,8 @@
               severity: 'warning',
             },
             annotations: {
-              message: 'etcd cluster "{{ $labels.job }}": 99th percentile commit durations {{ $value }}s on etcd instance {{ $labels.instance }}.',
+              description: 'etcd cluster "{{ $labels.job }}": 99th percentile commit durations {{ $value }}s on etcd instance {{ $labels.instance }}.',
+              summary: 'etcd cluster 99th percentile commit durations are too high.',
             },
           },
           {
@@ -185,7 +199,8 @@
               severity: 'warning',
             },
             annotations: {
-              message: '{{ $value }}% of requests for {{ $labels.method }} failed on etcd instance {{ $labels.instance }}',
+              description: '{{ $value }}% of requests for {{ $labels.method }} failed on etcd instance {{ $labels.instance }}',
+              summary: 'etcd has high number of failed HTTP requests.',
             },
           },
           {
@@ -199,7 +214,8 @@
               severity: 'critical',
             },
             annotations: {
-              message: '{{ $value }}% of requests for {{ $labels.method }} failed on etcd instance {{ $labels.instance }}.',
+              description: '{{ $value }}% of requests for {{ $labels.method }} failed on etcd instance {{ $labels.instance }}.',
+              summary: 'etcd has high number of failed HTTP requests.',
             },
           },
           {
@@ -213,9 +229,36 @@
               severity: 'warning',
             },
             annotations: {
-              message: 'etcd instance {{ $labels.instance }} HTTP requests to {{ $labels.method }} are slow.',
+              description: 'etcd instance {{ $labels.instance }} HTTP requests to {{ $labels.method }} are slow.',
+              summary: 'etcd instance HTTP requests are slow.',
             },
           },
+         {
+            alert: 'etcdBackendQuotaLowSpace',
+            expr: |||
+              (etcd_mvcc_db_total_size_in_bytes/etcd_server_quota_backend_bytes)*100 > 95
+            ||| % $._config,
+            'for': '10m',
+            labels: {
+              severity: 'critical',
+            },
+            annotations: {
+              message: 'etcd cluster "{{ $labels.job }}": database size exceeds the defined quota on etcd instance {{ $labels.instance }}, please defrag or increase the quota as the writes to etcd will be disabled when it is full.',
+            },
+         },
+         {
+            alert: 'etcdExcessiveDatabaseGrowth',
+            expr: |||
+              increase(((etcd_mvcc_db_total_size_in_bytes/etcd_server_quota_backend_bytes)*100)[240m:1m]) > 50
+            ||| % $._config,
+            'for': '10m',
+            labels: {
+              severity: 'warning',
+            },
+            annotations: {
+              message: 'etcd cluster "{{ $labels.job }}": Observed surge in etcd writes leading to 50% increase in database size over the past four hours on etcd instance {{ $labels.instance }}, please check as it might be disruptive.',
+            },
+         },
         ],
       },
     ],
