@@ -9,14 +9,31 @@ The minimum recommended etcd versions to run in **production** are 3.2.28+, 3.3.
 <hr>
 
 
-## v3.4.14 (2020 TBD)
+## v3.4.14 (2020-11-25)
 
 See [code changes](https://github.com/etcd-io/etcd/compare/v3.4.13...v3.4.14) and [v3.4 upgrade guide](https://github.com/etcd-io/etcd/blob/master/Documentation/upgrades/upgrade_3_4.md) for any breaking changes.
+
+### Package `clientv3`
+
+- Fix [auth token invalid after watch reconnects](https://github.com/etcd-io/etcd/pull/12264). Get AuthToken automatically when clientConn is ready.
 
 ### etcd server
 
 - [Fix server panic](https://github.com/etcd-io/etcd/pull/12288) when force-new-cluster flag is enabled in a cluster which had learner node.
 
+### Package `netutil`
+
+- Remove [`netutil.DropPort/RecoverPort/SetLatency/RemoveLatency`](https://github.com/etcd-io/etcd/pull/12491).
+  - These are not used anymore. They were only used for older versions of functional testing.
+  - Removed to adhere to best security practices, minimize arbitrary shell invocation.
+
+### `tools/etcd-dump-metrics`
+
+- Implement [input validation to prevent arbitrary shell invocation](https://github.com/etcd-io/etcd/pull/12491).
+
+### Go
+
+- Compile with [*Go 1.12.17*](https://golang.org/doc/devel/release.html#go1.12).
 
 
 <hr>
@@ -29,6 +46,13 @@ See [code changes](https://github.com/etcd-io/etcd/compare/v3.4.12...v3.4.13) an
 ### Security
 
 - A [log warning](https://github.com/etcd-io/etcd/pull/12242) is added when etcd use any existing directory that has a permission different than 700 on Linux and 777 on Windows.
+
+### Go
+
+- Compile with [*Go 1.12.17*](https://golang.org/doc/devel/release.html#go1.12).
+
+
+<hr>
 
 
 ## [v3.4.12](https://github.com/etcd-io/etcd/releases/tag/v3.4.12) (2020-08-19)

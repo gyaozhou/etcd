@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 
-ETCD_ROOT_DIR="$(pwd)"
+REPO="go.etcd.io/etcd"
+
+if [[ "$(go list)" != "${REPO}/v3" ]]; then
+  echo "must be run from '${REPO}/v3' module directory"
+  exit 255
+fi
+
+ETCD_ROOT_DIR=$(go list -f '{{.Dir}}' "${REPO}/v3")
 
 ####   Convenient IO methods #####
 
@@ -8,11 +15,13 @@ COLOR_RED='\033[0;31m'
 COLOR_ORANGE='\033[0;33m'
 COLOR_GREEN='\033[0;32m'
 COLOR_LIGHTCYAN='\033[0;36m'
-
+COLOR_BLUE='\033[0;94m'
+COLOR_MAGENTA='\033[95m'
+COLOR_BOLD='\033[1m'
 COLOR_NONE='\033[0m' # No Color
 
 function log_error {
-  >&2 echo -n -e "${COLOR_RED}"
+  >&2 echo -n -e "${COLOR_BOLD}${COLOR_RED}"
   >&2 echo "$@"
   >&2 echo -n -e "${COLOR_NONE}"
 }
@@ -29,12 +38,65 @@ function log_callout {
   >&2 echo -n -e "${COLOR_NONE}"
 }
 
+function log_cmd {
+  >&2 echo -n -e "${COLOR_BLUE}"
+  >&2 echo "$@"
+  >&2 echo -n -e "${COLOR_NONE}"
+}
+
 function log_success {
   >&2 echo -n -e "${COLOR_GREEN}"
   >&2 echo "$@"
   >&2 echo -n -e "${COLOR_NONE}"
 }
 
+function log_info {
+  >&2 echo -n -e "${COLOR_NONE}"
+  >&2 echo "$@"
+  >&2 echo -n -e "${COLOR_NONE}"
+}
+
+# From http://stackoverflow.com/a/12498485
+function relativePath {
+  # both $1 and $2 are absolute paths beginning with /
+  # returns relative path to $2 from $1
+  local source=$1
+  local target=$2
+
+  local commonPart=$source
+  local result=""
+
+  while [[ "${target#$commonPart}" == "${target}" ]]; do
+    # no match, means that candidate common part is not correct
+    # go up one level (reduce common part)
+    commonPart="$(dirname "$commonPart")"
+    # and record that we went back, with correct / handling
+    if [[ -z $result ]]; then
+      result=".."
+    else
+      result="../$result"
+    fi
+  done
+
+  if [[ $commonPart == "/" ]]; then
+    # special case for root (no common path)
+    result="$result/"
+  fi
+
+  # since we now have identified the common part,
+  # compute the non-common part
+  local forwardPart="${target#$commonPart}"
+
+  # and now stick all parts together
+  if [[ -n $result ]] && [[ -n $forwardPart ]]; then
+    result="$result$forwardPart"
+  elif [[ -n $forwardPart ]]; then
+    # extra slash removal
+    result="${forwardPart:1}"
+  fi
+
+  echo "$result"
+}
 
 ####   Discovery of files/packages within a go module #####
 
@@ -51,8 +113,9 @@ function pkgs_in_module {
   go list -mod=mod "${1:-./...}";
 }
 
-function filter_out_integration_style_tests {
-  grep -Ev '/(tests/e2e|integration|functional)(/|$)'
+# Prints subdirectory (from the repo root) for the current module.
+function module_subdir {
+  relativePath "${ETCD_ROOT_DIR}" "${PWD}"
 }
 
 ####    Running actions against multiple modules ####
@@ -63,16 +126,21 @@ function filter_out_integration_style_tests {
 # the test.
 function run {
   local rpath
-  rpath=$(realpath "--relative-to=${ETCD_ROOT_DIR}" "${PWD}")
-  local repro="$*"
-  if [ "${rpath}" != "." ]; then
-    repro="(cd ${rpath} && ${repro})"
+  local command
+  rpath=$(module_subdir)
+  # Quoting all components as the commands are fully copy-parsable:
+  command=("${@}")
+  command=("${command[@]@Q}")
+  if [[ "${rpath}" != "." && "${rpath}" != "" ]]; then
+    repro="(cd ${rpath} && ${command[*]})"
+  else 
+    repro="${command[*]}"
   fi
 
-  log_callout "% ${repro}"
-  "${@}"
+  log_cmd "% ${repro}"
+  "${@}" 2> >(while read -r line; do echo -e "stderr: ${COLOR_MAGENTA}${line}${COLOR_NONE}" >&2; done)
   local error_code=$?
-  if [ ${error_code} != 0 ]; then
+  if [ ${error_code} -ne 0 ]; then
     log_error -e "FAIL: (code:${error_code}):\n  % ${repro}"
     return ${error_code}
   fi
@@ -86,8 +154,28 @@ function run_for_module {
   local module=${1:-"."}
   shift 1
   (
-    cd "${module}" && "$@"
+    cd "${ETCD_ROOT_DIR}/${module}" && "$@"
   )
+}
+
+function modules() {
+  modules=(
+    "${REPO}/api/v3"
+    "${REPO}/pkg/v3"
+    "${REPO}/raft/v3"
+    "${REPO}/client/v2"
+    "${REPO}/client/v3"
+    "${REPO}/server/v3"
+    "${REPO}/etcdctl/v3"
+    "${REPO}/tests/v3"
+    "${REPO}/v3")
+  echo "${modules[@]}"
+}
+
+function modules_exp() {
+  for m in $(modules); do
+    echo -n "${m}/... "
+  done
 }
 
 #  run_for_modules [cmd]
@@ -96,6 +184,14 @@ function run_for_module {
 function run_for_modules {
   local pkg="${PKG:-./...}"
   if [ -z "${USERMOD}" ]; then
+    run_for_module "api" "$@" "${pkg}" || return "$?"
+    run_for_module "pkg" "$@" "${pkg}" || return "$?"
+    run_for_module "raft" "$@" "${pkg}" || return "$?"
+    run_for_module "client/v2" "$@" "${pkg}" || return "$?"
+    run_for_module "client/v3" "$@" "${pkg}" || return "$?"
+    run_for_module "server" "$@" "${pkg}" || return "$?"
+    run_for_module "etcdctl" "$@" "${pkg}" || return "$?"
+    run_for_module "tests" "$@" "${pkg}" || return "$?"
     run_for_module "." "$@" "${pkg}" || return "$?"
   else
     run_for_module "${USERMOD}" "$@" "${pkg}" || return "$?"
@@ -183,12 +279,63 @@ function go_test {
 # tool_exists [tool] [instruction]
 # Checks whether given [tool] is installed. In case of failure,
 # prints a warning with installation [instruction] and returns !=0 code.
+#
+# WARNING: This depend on "any" version of the 'binary' that might be tricky
+# from hermetic build perspective. For go binaries prefer 'tool_go_run'
 function tool_exists {
   local tool="${1}"
   local instruction="${2}"
   if ! command -v "${tool}" >/dev/null; then
     log_warning "Tool: '${tool}' not found on PATH. ${instruction}"
     return 255
+  fi
+}
+
+# Ensure gobin is available, as it runs majority of the tools
+if ! command -v "gobin" >/dev/null; then
+    run env GO111MODULE=off go get github.com/myitcv/gobin || exit 1
+fi
+
+# tool_get_bin [tool] - returns absolute path to a tool binary (or returns error)
+function tool_get_bin {
+  tool_exists "gobin" "GO111MODULE=off go get github.com/myitcv/gobin" || return 2
+
+  local tool="$1"
+  if [[ "$tool" == *"@"* ]]; then
+    # shellcheck disable=SC2086
+    run gobin ${GOBINARGS} -p "${tool}" || return 2
+  else
+    # shellcheck disable=SC2086
+    run_for_module ./tools/mod run gobin ${GOBINARGS} -p -m --mod=readonly "${tool}" || return 2
+  fi
+}
+
+# tool_pkg_dir [pkg] - returns absolute path to a directory that stores given pkg.
+# The pkg versions must be defined in ./tools/mod directory.
+function tool_pkg_dir {
+  run_for_module ./tools/mod run go list -f '{{.Dir}}' "${1}"
+}
+
+# tool_get_bin [tool]
+function run_go_tool {
+  local cmdbin
+  if ! cmdbin=$(tool_get_bin "${1}"); then
+    return 2
+  fi
+  shift 1
+  run "${cmdbin}" "$@" || return 2
+}
+
+# assert_no_git_modifications fails if there are any uncommited changes.
+function assert_no_git_modifications {
+  log_callout "Making sure everything is committed."
+  if ! git diff --cached --exit-code; then
+    log_error "Found staged by uncommited changes. Do commit/stash your changes first."
+    return 2
+  fi
+  if ! git diff  --exit-code; then
+    log_error "Found unstaged and uncommited changes. Do commit/stash your changes first."
+    return 2
   fi
 }
 

@@ -23,8 +23,8 @@ import (
 	"testing"
 	"time"
 
-	"go.etcd.io/etcd/v3/clientv3"
-	"go.etcd.io/etcd/v3/mvcc/mvccpb"
+	"go.etcd.io/etcd/api/v3/mvccpb"
+	"go.etcd.io/etcd/client/v3"
 
 	bolt "go.etcd.io/bbolt"
 )
@@ -36,13 +36,13 @@ func TestEtcdCorruptHash(t *testing.T) {
 	// defer os.Setenv("EXPECT_DEBUG", oldenv)
 	// os.Setenv("EXPECT_DEBUG", "1")
 
-	cfg := configNoTLS
+	cfg := newConfigNoTLS()
 
 	// trigger snapshot so that restart member can load peers from disk
 	cfg.snapshotCount = 3
 
 	testCtl(t, corruptTest, withQuorum(),
-		withCfg(cfg),
+		withCfg(*cfg),
 		withInitialCorruptCheck(),
 		withCorruptFunc(corruptHash),
 	)

@@ -21,16 +21,16 @@ import (
 	"testing"
 	"time"
 
-	"go.etcd.io/etcd/v3/clientv3"
-	"go.etcd.io/etcd/v3/pkg/testutil"
+	"go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/pkg/v3/testutil"
 )
 
 func TestCtlV3Migrate(t *testing.T) {
 	defer testutil.AfterTest(t)
 
-	cfg := configNoTLS
+	cfg := newConfigNoTLS()
 	cfg.enableV2 = true
-	epc := setupEtcdctlTest(t, &cfg, false)
+	epc := setupEtcdctlTest(t, cfg, false)
 	defer func() {
 		if errC := epc.Close(); errC != nil {
 			t.Fatalf("error closing etcd processes (%v)", errC)
@@ -58,7 +58,7 @@ func TestCtlV3Migrate(t *testing.T) {
 	os.Unsetenv("ETCDCTL_API")
 	cx := ctlCtx{
 		t:           t,
-		cfg:         configNoTLS,
+		cfg:         *newConfigNoTLS(),
 		dialTimeout: 7 * time.Second,
 		epc:         epc,
 	}

@@ -22,18 +22,18 @@ import (
 	"testing"
 	"time"
 
-	"go.etcd.io/etcd/v3/clientv3"
-	"go.etcd.io/etcd/v3/pkg/testutil"
-	"go.etcd.io/etcd/v3/pkg/transport"
-	"go.etcd.io/etcd/v3/pkg/types"
+	"go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/pkg/v3/testutil"
+	"go.etcd.io/etcd/pkg/v3/transport"
+	"go.etcd.io/etcd/pkg/v3/types"
 )
 
 func TestCtlV3MoveLeaderSecure(t *testing.T) {
-	testCtlV3MoveLeader(t, configTLS)
+	testCtlV3MoveLeader(t, *newConfigTLS())
 }
 
 func TestCtlV3MoveLeaderInsecure(t *testing.T) {
-	testCtlV3MoveLeader(t, configNoTLS)
+	testCtlV3MoveLeader(t, *newConfigNoTLS())
 }
 
 func testCtlV3MoveLeader(t *testing.T, cfg etcdProcessClusterConfig) {
@@ -92,7 +92,7 @@ func testCtlV3MoveLeader(t *testing.T, cfg etcdProcessClusterConfig) {
 	defer os.Unsetenv("ETCDCTL_API")
 	cx := ctlCtx{
 		t:           t,
-		cfg:         configNoTLS,
+		cfg:         *newConfigNoTLS(),
 		dialTimeout: 7 * time.Second,
 		epc:         epc,
 	}

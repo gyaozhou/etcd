@@ -14,7 +14,7 @@
 
 package raft
 
-import pb "go.etcd.io/etcd/v3/raft/raftpb"
+import pb "go.etcd.io/etcd/raft/v3/raftpb"
 
 // zhou: "unstable" is part of "raftlog"
 

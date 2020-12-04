@@ -1,4 +1,14 @@
-# server version: etcd_server_version{server_version="3.3.0+git"}
+# server version: etcd_server_version{server_version="3.5.0-pre"}
+
+# name: "etcd_cluster_version"
+# description: "Which version is running. 1 for 'cluster_version' label with current cluster version"
+# type: "gauge"
+etcd_cluster_version{cluster_version="3.5"}
+
+# name: "etcd_debugging_auth_revision"
+# description: "The current revision of auth store."
+# type: "gauge"
+etcd_debugging_auth_revision
 
 # name: "etcd_debugging_disk_backend_commit_rebalance_duration_seconds"
 # description: "The latency distributions of commit.rebalance called by bboltdb backend."
@@ -109,10 +119,25 @@ etcd_debugging_lease_ttl_total_bucket{le="+Inf"}
 etcd_debugging_lease_ttl_total_sum
 etcd_debugging_lease_ttl_total_count
 
+# name: "etcd_debugging_mvcc_compact_revision"
+# description: "The revision of the last compaction in store."
+# type: "gauge"
+etcd_debugging_mvcc_compact_revision
+
+# name: "etcd_debugging_mvcc_current_revision"
+# description: "The current revision of store."
+# type: "gauge"
+etcd_debugging_mvcc_current_revision
+
 # name: "etcd_debugging_mvcc_db_compaction_keys_total"
 # description: "Total number of db keys compacted."
 # type: "counter"
 etcd_debugging_mvcc_db_compaction_keys_total
+
+# name: "etcd_debugging_mvcc_db_compaction_last"
+# description: "The unix time of the last db compaction. Resets to 0 on start."
+# type: "gauge"
+etcd_debugging_mvcc_db_compaction_last
 
 # name: "etcd_debugging_mvcc_db_compaction_pause_duration_milliseconds"
 # description: "Bucketed histogram of db compaction pause duration."
@@ -215,6 +240,11 @@ etcd_debugging_mvcc_range_total
 # description: "Total number of unsynced slow watchers."
 # type: "gauge"
 etcd_debugging_mvcc_slow_watcher_total
+
+# name: "etcd_debugging_mvcc_total_put_size_in_bytes"
+# description: "The total size of put kv pairs seen by this member."
+# type: "gauge"
+etcd_debugging_mvcc_total_put_size_in_bytes
 
 # name: "etcd_debugging_mvcc_txn_total"
 # description: "Total number of txns seen by this member."
@@ -390,6 +420,16 @@ etcd_disk_wal_fsync_duration_seconds_bucket{le="+Inf"}
 etcd_disk_wal_fsync_duration_seconds_sum
 etcd_disk_wal_fsync_duration_seconds_count
 
+# name: "etcd_disk_wal_write_bytes_total"
+# description: "Total number of bytes written in WAL."
+# type: "gauge"
+etcd_disk_wal_write_bytes_total
+
+# name: "etcd_mvcc_db_open_read_transactions"
+# description: "The number of currently open read transactions"
+# type: "gauge"
+etcd_mvcc_db_open_read_transactions
+
 # name: "etcd_mvcc_db_total_size_in_bytes"
 # description: "Total size of the underlying database physically allocated in bytes."
 # type: "gauge"
@@ -399,6 +439,11 @@ etcd_mvcc_db_total_size_in_bytes
 # description: "Total size of the underlying database logically in use in bytes."
 # type: "gauge"
 etcd_mvcc_db_total_size_in_use_in_bytes
+
+# name: "etcd_mvcc_delete_total"
+# description: "Total number of deletes seen by this member."
+# type: "counter"
+etcd_mvcc_delete_total
 
 # name: "etcd_mvcc_hash_duration_seconds"
 # description: "The latency distribution of storage hash operation."
@@ -443,6 +488,21 @@ etcd_mvcc_hash_rev_duration_seconds_bucket{le="163.84"}
 etcd_mvcc_hash_rev_duration_seconds_bucket{le="+Inf"}
 etcd_mvcc_hash_rev_duration_seconds_sum
 etcd_mvcc_hash_rev_duration_seconds_count
+
+# name: "etcd_mvcc_put_total"
+# description: "Total number of puts seen by this member."
+# type: "counter"
+etcd_mvcc_put_total
+
+# name: "etcd_mvcc_range_total"
+# description: "Total number of ranges seen by this member."
+# type: "counter"
+etcd_mvcc_range_total
+
+# name: "etcd_mvcc_txn_total"
+# description: "Total number of txns seen by this member."
+# type: "counter"
+etcd_mvcc_txn_total
 
 # name: "etcd_network_active_peers"
 # description: "The current number of active peer connections."
@@ -492,10 +552,16 @@ etcd_network_peer_round_trip_time_seconds_sum{To="REMOTE_PEER_NODE_ID"}
 # type: "counter"
 etcd_network_peer_sent_bytes_total{To="REMOTE_PEER_NODE_ID"}
 
+# name: "etcd_server_client_requests_total"
+# description: "The total number of client requests per client version."
+# type: "counter"
+etcd_server_client_requests_total{client_api_version="3.5",type="stream"}
+etcd_server_client_requests_total{client_api_version="3.5",type="unary"}
+
 # name: "etcd_server_go_version"
 # description: "Which Go version server is running with. 1 for 'server_go_version' label with current version."
 # type: "gauge"
-etcd_server_go_version{server_go_version="go1.11.1"}
+etcd_server_go_version{server_go_version="go1.14.3"}
 
 # name: "etcd_server_has_leader"
 # description: "Whether or not a leader exists. 1 is existence, 0 is not."
@@ -520,28 +586,23 @@ etcd_server_heartbeat_send_failures_total
 # name: "etcd_server_id"
 # description: "Server or member ID in hexadecimal format. 1 for 'server_id' label with current ID."
 # type: "gauge"
-etcd_server_id{server_id="221ed218fa16d1fe"}
-etcd_server_id{server_id="3f1ca865609d428d"}
+etcd_server_id{server_id="451af08594378132"}
+etcd_server_id{server_id="61791325a7fedcf8"}
 
 # name: "etcd_server_is_leader"
 # description: "Whether or not this member is a leader. 1 if is, 0 otherwise."
 # type: "gauge"
 etcd_server_is_leader
 
-# name: "etcd_server_leader_changes_seen_total"
-# description: "The number of leader changes seen."
-# type: "counter"
-etcd_server_leader_changes_seen_total
-
 # name: "etcd_server_is_learner"
 # description: "Whether or not this member is a learner. 1 if is, 0 otherwise."
 # type: "gauge"
 etcd_server_is_learner
 
-# name: "etcd_server_learner_promote_failures"
-# description: "The total number of failed learner promotions (likely learner not ready) while this member is leader."
+# name: "etcd_server_leader_changes_seen_total"
+# description: "The number of leader changes seen."
 # type: "counter"
-etcd_server_learner_promote_failures
+etcd_server_leader_changes_seen_total
 
 # name: "etcd_server_learner_promote_successes"
 # description: "The total number of successful learner promotions while this member is leader."
@@ -588,10 +649,15 @@ etcd_server_slow_apply_total
 # type: "counter"
 etcd_server_slow_read_indexes_total
 
+# name: "etcd_server_snapshot_apply_in_progress_total"
+# description: "1 if the server is applying the incoming snapshot. 0 if none."
+# type: "gauge"
+etcd_server_snapshot_apply_in_progress_total
+
 # name: "etcd_server_version"
 # description: "Which version is running. 1 for 'server_version' label with current version."
 # type: "gauge"
-etcd_server_version{server_version="3.3.0+git"}
+etcd_server_version{server_version="3.5.0-pre"}
 
 # name: "etcd_snap_db_fsync_duration_seconds"
 # description: "The latency distributions of fsyncing .snap.db file"
@@ -668,6 +734,11 @@ go_gc_duration_seconds_count
 # type: "gauge"
 go_goroutines
 
+# name: "go_info"
+# description: "Information about the Go environment."
+# type: "gauge"
+go_info{version="go1.14.3"}
+
 # name: "go_memstats_alloc_bytes"
 # description: "Number of bytes allocated and still in use."
 # type: "gauge"
@@ -687,6 +758,11 @@ go_memstats_buck_hash_sys_bytes
 # description: "Total number of frees."
 # type: "counter"
 go_memstats_frees_total
+
+# name: "go_memstats_gc_cpu_fraction"
+# description: "The fraction of this program's available CPU time used by the GC since the program started."
+# type: "gauge"
+go_memstats_gc_cpu_fraction
 
 # name: "go_memstats_gc_sys_bytes"
 # description: "Number of bytes used for garbage collection system metadata."
@@ -713,10 +789,10 @@ go_memstats_heap_inuse_bytes
 # type: "gauge"
 go_memstats_heap_objects
 
-# name: "go_memstats_heap_released_bytes_total"
-# description: "Total number of heap bytes released to OS."
-# type: "counter"
-go_memstats_heap_released_bytes_total
+# name: "go_memstats_heap_released_bytes"
+# description: "Number of heap bytes released to OS."
+# type: "gauge"
+go_memstats_heap_released_bytes
 
 # name: "go_memstats_heap_sys_bytes"
 # description: "Number of heap bytes obtained from system."
@@ -779,9 +855,14 @@ go_memstats_stack_inuse_bytes
 go_memstats_stack_sys_bytes
 
 # name: "go_memstats_sys_bytes"
-# description: "Number of bytes obtained by system. Sum of all system allocations."
+# description: "Number of bytes obtained from system."
 # type: "gauge"
 go_memstats_sys_bytes
+
+# name: "go_threads"
+# description: "Number of OS threads created."
+# type: "gauge"
+go_threads
 
 # name: "grpc_server_handled_total"
 # description: "Total number of RPCs completed on the server, regardless of success or failure."
@@ -807,11 +888,13 @@ go_memstats_sys_bytes
 grpc_server_handled_total{grpc_code="CODE",grpc_method="Alarm",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_handled_total{grpc_code="CODE",grpc_method="AuthDisable",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_handled_total{grpc_code="CODE",grpc_method="AuthEnable",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
+grpc_server_handled_total{grpc_code="CODE",grpc_method="AuthStatus",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_handled_total{grpc_code="CODE",grpc_method="Authenticate",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_handled_total{grpc_code="CODE",grpc_method="Check",grpc_service="grpc.health.v1.Health",grpc_type="unary"}
 grpc_server_handled_total{grpc_code="CODE",grpc_method="Compact",grpc_service="etcdserverpb.KV",grpc_type="unary"}
 grpc_server_handled_total{grpc_code="CODE",grpc_method="Defragment",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_handled_total{grpc_code="CODE",grpc_method="DeleteRange",grpc_service="etcdserverpb.KV",grpc_type="unary"}
+grpc_server_handled_total{grpc_code="CODE",grpc_method="Downgrade",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_handled_total{grpc_code="CODE",grpc_method="Hash",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_handled_total{grpc_code="CODE",grpc_method="HashKV",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_handled_total{grpc_code="CODE",grpc_method="LeaseGrant",grpc_service="etcdserverpb.Lease",grpc_type="unary"}
@@ -821,6 +904,7 @@ grpc_server_handled_total{grpc_code="CODE",grpc_method="LeaseRevoke",grpc_servic
 grpc_server_handled_total{grpc_code="CODE",grpc_method="LeaseTimeToLive",grpc_service="etcdserverpb.Lease",grpc_type="unary"}
 grpc_server_handled_total{grpc_code="CODE",grpc_method="MemberAdd",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
 grpc_server_handled_total{grpc_code="CODE",grpc_method="MemberList",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
+grpc_server_handled_total{grpc_code="CODE",grpc_method="MemberPromote",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
 grpc_server_handled_total{grpc_code="CODE",grpc_method="MemberRemove",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
 grpc_server_handled_total{grpc_code="CODE",grpc_method="MemberUpdate",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
 grpc_server_handled_total{grpc_code="CODE",grpc_method="MoveLeader",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
@@ -843,6 +927,7 @@ grpc_server_handled_total{grpc_code="CODE",grpc_method="UserGrantRole",grpc_serv
 grpc_server_handled_total{grpc_code="CODE",grpc_method="UserList",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_handled_total{grpc_code="CODE",grpc_method="UserRevokeRole",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_handled_total{grpc_code="CODE",grpc_method="Watch",grpc_service="etcdserverpb.Watch",grpc_type="bidi_stream"}
+grpc_server_handled_total{grpc_code="CODE",grpc_method="Watch",grpc_service="grpc.health.v1.Health",grpc_type="server_stream"}
 
 # name: "grpc_server_msg_received_total"
 # description: "Total number of RPC stream messages received on the server."
@@ -850,11 +935,13 @@ grpc_server_handled_total{grpc_code="CODE",grpc_method="Watch",grpc_service="etc
 grpc_server_msg_received_total{grpc_method="Alarm",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_msg_received_total{grpc_method="AuthDisable",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_msg_received_total{grpc_method="AuthEnable",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
+grpc_server_msg_received_total{grpc_method="AuthStatus",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_msg_received_total{grpc_method="Authenticate",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_msg_received_total{grpc_method="Check",grpc_service="grpc.health.v1.Health",grpc_type="unary"}
 grpc_server_msg_received_total{grpc_method="Compact",grpc_service="etcdserverpb.KV",grpc_type="unary"}
 grpc_server_msg_received_total{grpc_method="Defragment",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_msg_received_total{grpc_method="DeleteRange",grpc_service="etcdserverpb.KV",grpc_type="unary"}
+grpc_server_msg_received_total{grpc_method="Downgrade",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_msg_received_total{grpc_method="Hash",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_msg_received_total{grpc_method="HashKV",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_msg_received_total{grpc_method="LeaseGrant",grpc_service="etcdserverpb.Lease",grpc_type="unary"}
@@ -864,6 +951,7 @@ grpc_server_msg_received_total{grpc_method="LeaseRevoke",grpc_service="etcdserve
 grpc_server_msg_received_total{grpc_method="LeaseTimeToLive",grpc_service="etcdserverpb.Lease",grpc_type="unary"}
 grpc_server_msg_received_total{grpc_method="MemberAdd",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
 grpc_server_msg_received_total{grpc_method="MemberList",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
+grpc_server_msg_received_total{grpc_method="MemberPromote",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
 grpc_server_msg_received_total{grpc_method="MemberRemove",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
 grpc_server_msg_received_total{grpc_method="MemberUpdate",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
 grpc_server_msg_received_total{grpc_method="MoveLeader",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
@@ -886,6 +974,7 @@ grpc_server_msg_received_total{grpc_method="UserGrantRole",grpc_service="etcdser
 grpc_server_msg_received_total{grpc_method="UserList",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_msg_received_total{grpc_method="UserRevokeRole",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_msg_received_total{grpc_method="Watch",grpc_service="etcdserverpb.Watch",grpc_type="bidi_stream"}
+grpc_server_msg_received_total{grpc_method="Watch",grpc_service="grpc.health.v1.Health",grpc_type="server_stream"}
 
 # name: "grpc_server_msg_sent_total"
 # description: "Total number of gRPC stream messages sent by the server."
@@ -893,11 +982,13 @@ grpc_server_msg_received_total{grpc_method="Watch",grpc_service="etcdserverpb.Wa
 grpc_server_msg_sent_total{grpc_method="Alarm",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_msg_sent_total{grpc_method="AuthDisable",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_msg_sent_total{grpc_method="AuthEnable",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
+grpc_server_msg_sent_total{grpc_method="AuthStatus",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_msg_sent_total{grpc_method="Authenticate",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_msg_sent_total{grpc_method="Check",grpc_service="grpc.health.v1.Health",grpc_type="unary"}
 grpc_server_msg_sent_total{grpc_method="Compact",grpc_service="etcdserverpb.KV",grpc_type="unary"}
 grpc_server_msg_sent_total{grpc_method="Defragment",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_msg_sent_total{grpc_method="DeleteRange",grpc_service="etcdserverpb.KV",grpc_type="unary"}
+grpc_server_msg_sent_total{grpc_method="Downgrade",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_msg_sent_total{grpc_method="Hash",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_msg_sent_total{grpc_method="HashKV",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_msg_sent_total{grpc_method="LeaseGrant",grpc_service="etcdserverpb.Lease",grpc_type="unary"}
@@ -907,6 +998,7 @@ grpc_server_msg_sent_total{grpc_method="LeaseRevoke",grpc_service="etcdserverpb.
 grpc_server_msg_sent_total{grpc_method="LeaseTimeToLive",grpc_service="etcdserverpb.Lease",grpc_type="unary"}
 grpc_server_msg_sent_total{grpc_method="MemberAdd",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
 grpc_server_msg_sent_total{grpc_method="MemberList",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
+grpc_server_msg_sent_total{grpc_method="MemberPromote",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
 grpc_server_msg_sent_total{grpc_method="MemberRemove",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
 grpc_server_msg_sent_total{grpc_method="MemberUpdate",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
 grpc_server_msg_sent_total{grpc_method="MoveLeader",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
@@ -929,6 +1021,7 @@ grpc_server_msg_sent_total{grpc_method="UserGrantRole",grpc_service="etcdserverp
 grpc_server_msg_sent_total{grpc_method="UserList",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_msg_sent_total{grpc_method="UserRevokeRole",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_msg_sent_total{grpc_method="Watch",grpc_service="etcdserverpb.Watch",grpc_type="bidi_stream"}
+grpc_server_msg_sent_total{grpc_method="Watch",grpc_service="grpc.health.v1.Health",grpc_type="server_stream"}
 
 # name: "grpc_server_started_total"
 # description: "Total number of RPCs started on the server."
@@ -936,11 +1029,13 @@ grpc_server_msg_sent_total{grpc_method="Watch",grpc_service="etcdserverpb.Watch"
 grpc_server_started_total{grpc_method="Alarm",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_started_total{grpc_method="AuthDisable",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_started_total{grpc_method="AuthEnable",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
+grpc_server_started_total{grpc_method="AuthStatus",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_started_total{grpc_method="Authenticate",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_started_total{grpc_method="Check",grpc_service="grpc.health.v1.Health",grpc_type="unary"}
 grpc_server_started_total{grpc_method="Compact",grpc_service="etcdserverpb.KV",grpc_type="unary"}
 grpc_server_started_total{grpc_method="Defragment",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_started_total{grpc_method="DeleteRange",grpc_service="etcdserverpb.KV",grpc_type="unary"}
+grpc_server_started_total{grpc_method="Downgrade",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_started_total{grpc_method="Hash",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_started_total{grpc_method="HashKV",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
 grpc_server_started_total{grpc_method="LeaseGrant",grpc_service="etcdserverpb.Lease",grpc_type="unary"}
@@ -950,6 +1045,7 @@ grpc_server_started_total{grpc_method="LeaseRevoke",grpc_service="etcdserverpb.L
 grpc_server_started_total{grpc_method="LeaseTimeToLive",grpc_service="etcdserverpb.Lease",grpc_type="unary"}
 grpc_server_started_total{grpc_method="MemberAdd",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
 grpc_server_started_total{grpc_method="MemberList",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
+grpc_server_started_total{grpc_method="MemberPromote",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
 grpc_server_started_total{grpc_method="MemberRemove",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
 grpc_server_started_total{grpc_method="MemberUpdate",grpc_service="etcdserverpb.Cluster",grpc_type="unary"}
 grpc_server_started_total{grpc_method="MoveLeader",grpc_service="etcdserverpb.Maintenance",grpc_type="unary"}
@@ -972,4 +1068,62 @@ grpc_server_started_total{grpc_method="UserGrantRole",grpc_service="etcdserverpb
 grpc_server_started_total{grpc_method="UserList",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_started_total{grpc_method="UserRevokeRole",grpc_service="etcdserverpb.Auth",grpc_type="unary"}
 grpc_server_started_total{grpc_method="Watch",grpc_service="etcdserverpb.Watch",grpc_type="bidi_stream"}
+grpc_server_started_total{grpc_method="Watch",grpc_service="grpc.health.v1.Health",grpc_type="server_stream"}
+
+# name: "os_fd_limit"
+# description: "The file descriptor limit."
+# type: "gauge"
+os_fd_limit
+
+# name: "os_fd_used"
+# description: "The number of used file descriptors."
+# type: "gauge"
+os_fd_used
+
+# name: "process_cpu_seconds_total"
+# description: "Total user and system CPU time spent in seconds."
+# type: "counter"
+process_cpu_seconds_total
+
+# name: "process_max_fds"
+# description: "Maximum number of open file descriptors."
+# type: "gauge"
+process_max_fds
+
+# name: "process_open_fds"
+# description: "Number of open file descriptors."
+# type: "gauge"
+process_open_fds
+
+# name: "process_resident_memory_bytes"
+# description: "Resident memory size in bytes."
+# type: "gauge"
+process_resident_memory_bytes
+
+# name: "process_start_time_seconds"
+# description: "Start time of the process since unix epoch in seconds."
+# type: "gauge"
+process_start_time_seconds
+
+# name: "process_virtual_memory_bytes"
+# description: "Virtual memory size in bytes."
+# type: "gauge"
+process_virtual_memory_bytes
+
+# name: "process_virtual_memory_max_bytes"
+# description: "Maximum amount of virtual memory available in bytes."
+# type: "gauge"
+process_virtual_memory_max_bytes
+
+# name: "promhttp_metric_handler_requests_in_flight"
+# description: "Current number of scrapes being served."
+# type: "gauge"
+promhttp_metric_handler_requests_in_flight
+
+# name: "promhttp_metric_handler_requests_total"
+# description: "Total number of scrapes by HTTP status code."
+# type: "counter"
+promhttp_metric_handler_requests_total{code="200"}
+promhttp_metric_handler_requests_total{code="500"}
+promhttp_metric_handler_requests_total{code="503"}
 

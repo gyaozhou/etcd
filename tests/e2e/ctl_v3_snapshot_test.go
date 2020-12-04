@@ -25,9 +25,9 @@ import (
 	"testing"
 	"time"
 
-	"go.etcd.io/etcd/v3/clientv3/snapshot"
-	"go.etcd.io/etcd/v3/pkg/expect"
-	"go.etcd.io/etcd/v3/pkg/testutil"
+	"go.etcd.io/etcd/etcdctl/v3/snapshot"
+	"go.etcd.io/etcd/pkg/v3/expect"
+	"go.etcd.io/etcd/pkg/v3/testutil"
 )
 
 func TestCtlV3Snapshot(t *testing.T) { testCtl(t, snapshotTest) }
@@ -172,7 +172,7 @@ func TestIssue6361(t *testing.T) {
 		}
 	}()
 
-	dialTimeout := 7 * time.Second
+	dialTimeout := 10 * time.Second
 	prefixArgs := []string{ctlBinPath, "--endpoints", strings.Join(epc.EndpointsV3(), ","), "--dial-timeout", dialTimeout.String()}
 
 	// write some keys
