@@ -48,17 +48,15 @@ var (
 
 var DefaultRequestTimeout = 5 * time.Second
 
-// zhou: "class" net/http.Transport defines a lot of methods, including "RoundTripper interface", 
+// zhou: "class" net/http.Transport defines a lot of methods, including "RoundTripper interface",
 //       and interface CancelableTransport.
 var DefaultTransport CancelableTransport = &http.Transport{
 
 	Proxy: http.ProxyFromEnvironment,
-	Dial: (&net.Dialer{
-		// zhou: set timeout value for both of them as 30s
+	DialContext: (&net.Dialer{
 		Timeout:   30 * time.Second,
 		KeepAlive: 30 * time.Second,
-	}).Dial,
-
+	}).DialContext,
 	TLSHandshakeTimeout: 10 * time.Second,
 }
 
@@ -150,8 +148,8 @@ type Config struct {
 	SelectionMode EndpointSelectionMode
 }
 
-// zhou: etcd/client library, doesn't not includes concrete transport methods, 
-//       client could provide their own implementation which must be match 
+// zhou: etcd/client library, doesn't not includes concrete transport methods,
+//       client could provide their own implementation which must be match
 //       interface CancelableTransport definition.
 //       etcd/client provide default concrete transport methods, net/http.transport
 func (cfg *Config) transport() CancelableTransport {
@@ -179,13 +177,13 @@ type CancelableTransport interface {
 	CancelRequest(req *http.Request)
 }
 
-// zhou: type fo function, golang has a problem that it's not easy to know a value 
+// zhou: type fo function, golang has a problem that it's not easy to know a value
 //       or a type. Because the caplitialized is used for access control.
 
 type CheckRedirectFunc func(via int) error
 
 // zhou: default implementation only takes care the maximum redirect times,
-//       client could put more actions before redirect happened. 
+//       client could put more actions before redirect happened.
 
 // DefaultCheckRedirect follows up to 10 redirects, but no more.
 var DefaultCheckRedirect CheckRedirectFunc = func(via int) error {
@@ -231,8 +229,8 @@ type Client interface {
 	// GetVersion retrieves the current etcd server and cluster version
 	GetVersion(ctx context.Context) (*version.Versions, error)
 
-	// zhou: although "httpClient interface" doesn't expose to customer, but 
-	//       "httpClient.Do()" exposed to customer due to "Client interface" 
+	// zhou: although "httpClient interface" doesn't expose to customer, but
+	//       "httpClient.Do()" exposed to customer due to "Client interface"
 	//       could be accessed by customer.
 	httpClient
 }
@@ -297,10 +295,10 @@ type httpAction interface {
 type httpClusterClient struct {
 	clientFactory httpClientFactory
 
-	endpoints     []url.URL
-    // zhou: last action performed by node "endpoints[pinned]".
-	pinned        int
-	credentials   *credentials
+	endpoints []url.URL
+	// zhou: last action performed by node "endpoints[pinned]".
+	pinned      int
+	credentials *credentials
 	sync.RWMutex
 	rand          *rand.Rand
 	selectionMode EndpointSelectionMode
@@ -582,19 +580,26 @@ type simpleHTTPClient struct {
 	headerTimeout time.Duration
 }
 
-// zhou: 
+// ErrNoRequest indicates that the HTTPRequest object could not be found
+// or was nil.  No processing could continue.
+var ErrNoRequest = errors.New("No HTTPRequest was available")
+
+// zhou:
 func (c *simpleHTTPClient) Do(ctx context.Context, act httpAction) (*http.Response, []byte, error) {
 
-	// zhou: invoke such functions depends on action type, 
-    //       "setAction.HTTPRequest()", "getAction.HTTPRequest()", ...
+	// zhou: invoke such functions depends on action type,
+	//       "setAction.HTTPRequest()", "getAction.HTTPRequest()", ...
 	req := act.HTTPRequest(c.endpoint)
+	if req == nil {
+		return nil, nil, ErrNoRequest
+	}
 
 	if err := printcURL(req); err != nil {
 		return nil, nil, err
 	}
 
 	isWait := false
-	if req != nil && req.URL != nil {
+	if req.URL != nil {
 		// zhou: used in "waitAction"
 		ws := req.URL.Query().Get("wait")
 
@@ -700,16 +705,16 @@ func (a *authedAction) HTTPRequest(url url.URL) *http.Request {
 	return r
 }
 
-// zhou: the methods of this struct, match interface httpClient. 
+// zhou: the methods of this struct, match interface httpClient.
 //       At the sametime, it needs "client" provide interface httpClient.
-//       
+//
 type redirectFollowingHTTPClient struct {
 	// zhou: another struct which can provide interface httpClient.
 	client        httpClient
 	checkRedirect CheckRedirectFunc
 }
 
-// zhou: 
+// zhou:
 func (r *redirectFollowingHTTPClient) Do(ctx context.Context, act httpAction) (*http.Response, []byte, error) {
 
 	next := act

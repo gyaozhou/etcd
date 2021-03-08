@@ -635,7 +635,7 @@ func configureClientListeners(cfg *Config) (sctxs map[string]*serveCtx, err erro
 			}
 		}
 
-		defer func() {
+		defer func(u url.URL) {
 			if err == nil {
 				return
 			}
@@ -645,7 +645,7 @@ func configureClientListeners(cfg *Config) (sctxs map[string]*serveCtx, err erro
 				zap.String("address", u.Host),
 				zap.Error(err),
 			)
-		}()
+		}(u)
 		for k := range cfg.UserHandlers {
 			sctx.userHandlers[k] = cfg.UserHandlers[k]
 		}
