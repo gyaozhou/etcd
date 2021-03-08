@@ -269,7 +269,7 @@ func (c *Config) validate() error {
 type raft struct {
 	id uint64
 
-	// zhou: node current term 
+	// zhou: node current term
 	Term uint64
 	// zhou: already vote for node "Vote"
 	Vote uint64
@@ -324,7 +324,7 @@ type raft struct {
 
 	checkQuorum bool
 	// zhouL enable two-phase election protocol or NOT, depend on config
-	preVote     bool
+	preVote bool
 
 	heartbeatTimeout int
 	electionTimeout  int
@@ -333,7 +333,7 @@ type raft struct {
 	// when raft changes its state to follower or candidate.
 	randomizedElectionTimeout int
 	disableProposalForwarding bool
-	
+
 	// zhou: different timer handler for different roles
 	tick func()
 	// zhou: different message handler for different roles
@@ -429,14 +429,9 @@ func (r *raft) hardState() pb.HardState {
 
 // send persists state to stable storage and then sends to its mailbox.
 func (r *raft) send(m pb.Message) {
-<<<<<<< HEAD
-	m.From = r.id
-
-=======
 	if m.From == None {
 		m.From = r.id
 	}
->>>>>>> master
 	if m.Type == pb.MsgVote || m.Type == pb.MsgVoteResp || m.Type == pb.MsgPreVote || m.Type == pb.MsgPreVoteResp {
 		if m.Term == 0 {
 			// All {pre-,}campaign messages need to have the term set when
@@ -642,7 +637,7 @@ func (r *raft) maybeCommit() bool {
 	return r.raftLog.maybeCommit(mci, r.Term)
 }
 
-// zhou: 
+// zhou:
 func (r *raft) reset(term uint64) {
 	if r.Term != term {
 		r.Term = term
@@ -776,7 +771,7 @@ func (r *raft) becomeCandidate() {
 	r.logger.Infof("%x became candidate at term %d", r.id, r.Term)
 }
 
-// zhou: 
+// zhou:
 func (r *raft) becomePreCandidate() {
 	// TODO(xiangli) remove the panic when the raft implementation is stable
 	if r.state == StateLeader {
@@ -793,7 +788,7 @@ func (r *raft) becomePreCandidate() {
 	r.logger.Infof("%x became pre-candidate at term %d", r.id, r.Term)
 }
 
-// zhou: Raft Leader 
+// zhou: Raft Leader
 func (r *raft) becomeLeader() {
 	// TODO(xiangli) remove the panic when the raft implementation is stable
 	if r.state == StateFollower {
@@ -866,7 +861,7 @@ func (r *raft) campaign(t CampaignType) {
 	}
 	var term uint64
 	var voteMsg pb.MessageType
-	
+
 	// zhou: string compare
 	if t == campaignPreElection {
 		r.becomePreCandidate()
@@ -874,13 +869,13 @@ func (r *raft) campaign(t CampaignType) {
 		// PreVote RPCs are sent for the next term before we've incremented r.Term.
 		term = r.Term + 1
 	} else {
-		// zhou: when election timeout, this node will bacome Candidate and try to get enough 
+		// zhou: when election timeout, this node will bacome Candidate and try to get enough
 		//       vote for becoming Leader.
 		r.becomeCandidate()
 		voteMsg = pb.MsgVote
 		term = r.Term
 	}
-	// zhou: vote to itself, and check whether enough as majority			
+	// zhou: vote to itself, and check whether enough as majority
 	if _, _, res := r.poll(r.id, voteRespMsgType(voteMsg), true); res == quorum.VoteWon {
 		// We won the election after voting for ourselves (which must mean that
 		// this is a single-node cluster). Advance to the next state.
@@ -916,13 +911,13 @@ func (r *raft) campaign(t CampaignType) {
 			ctx = []byte(t)
 		}
 
-		// zhou: request vote to all other memebers for becoming Leader. 
+		// zhou: request vote to all other memebers for becoming Leader.
 		//       Term already increased when becoming Candidate, if no PreVote.
 		r.send(pb.Message{Term: term, To: id, Type: voteMsg, Index: r.raftLog.lastIndex(), LogTerm: r.raftLog.lastTerm(), Context: ctx})
 	}
 }
 
-// zhou: received a vote, update vote result.		
+// zhou: received a vote, update vote result.
 func (r *raft) poll(id uint64, t pb.MessageType, v bool) (granted int, rejected int, result quorum.VoteResult) {
 	if v {
 		r.logger.Infof("%x received %s from %x at term %d", r.id, t, id, r.Term)
@@ -937,7 +932,7 @@ func (r *raft) poll(id uint64, t pb.MessageType, v bool) (granted int, rejected 
 func (r *raft) Step(m pb.Message) error {
 	////////////////////////////////////////////////////////////////////////////////
 	// zhou: first handle term in message
-	
+
 	// Handle the message term, which may result in our stepping down to a follower.
 	switch {
 	case m.Term == 0:
@@ -1029,46 +1024,11 @@ func (r *raft) Step(m pb.Message) error {
 	switch m.Type {
 
 	case pb.MsgHup:
-<<<<<<< HEAD
-		// zhou: when Election timer expired
-		if r.state != StateLeader {
-			if !r.promotable() {
-				r.logger.Warningf("%x is unpromotable and can not campaign; ignoring MsgHup", r.id)
-				return nil
-			}
-			ents, err := r.raftLog.slice(r.raftLog.applied+1, r.raftLog.committed+1, noLimit)
-			if err != nil {
-				r.logger.Panicf("unexpected error getting unapplied entries (%v)", err)
-			}
-			
-			// zhou: in case of some Config Change have commited, but not applied, abort Compaign
-			if n := numOfPendingConf(ents); n != 0 && r.raftLog.committed > r.raftLog.applied {
-
-				r.logger.Warningf("%x cannot campaign at term %d since there are still %d pending configuration changes to apply", r.id, r.Term, n)
-
-				return nil
-			}
-
-			r.logger.Infof("%x is starting a new election at term %d", r.id, r.Term)
-			
-			if r.preVote {
-				// zhou: more practical option
-				r.campaign(campaignPreElection)
-			} else {
-				r.campaign(campaignElection)
-			}
-
-		} else {
-			// zhou: Election Timer expired again, this node just become Leader
-			r.logger.Debugf("%x ignoring MsgHup because already leader", r.id)
-=======
 		if r.preVote {
 			r.hup(campaignPreElection)
 		} else {
 			r.hup(campaignElection)
->>>>>>> master
 		}
-
 
 	case pb.MsgVote, pb.MsgPreVote:
 		// We can vote if this is a repeat of a vote we've already cast...
@@ -1077,8 +1037,8 @@ func (r *raft) Step(m pb.Message) error {
 			(r.Vote == None && r.lead == None) ||
 			// ...or this is a PreVote for a future term...
 			(m.Type == pb.MsgPreVote && m.Term > r.Term)
-		
-		// zhou: Follower think the new Leader must owns all logs I have. 
+
+		// zhou: Follower think the new Leader must owns all logs I have.
 		//       It make sure all replicated to majority nodes' log will be perserved
 
 		// ...and we believe the candidate is up to date.
@@ -1225,7 +1185,7 @@ func stepLeader(r *raft, m pb.Message) error {
 			}
 		}
 
-		// zhou: normal path for handling new Propose.			
+		// zhou: normal path for handling new Propose.
 		if !r.appendEntry(m.Entries...) {
 			return ErrProposalDropped
 		}
@@ -1449,7 +1409,7 @@ func stepCandidate(r *raft, m pb.Message) error {
 		r.becomeFollower(m.Term, m.From) // always m.Term == r.Term
 		r.handleSnapshot(m)
 	case myVoteRespType:
-		// zhou: check all reeived votes for this Candidate				
+		// zhou: check all reeived votes for this Candidate
 		gr, rj, res := r.poll(m.From, m.Type, !m.Reject)
 		r.logger.Infof("%x has received %d %s votes and %d vote rejections", r.id, gr, m.Type, rj)
 		switch res {
@@ -1528,7 +1488,7 @@ func stepFollower(r *raft, m pb.Message) error {
 }
 
 func (r *raft) handleAppendEntries(m pb.Message) {
-	
+
 	// zhou: don't we need to check more details?
 	if m.Index < r.raftLog.committed {
 		r.send(pb.Message{To: m.From, Type: pb.MsgAppResp, Index: r.raftLog.committed})
@@ -1744,7 +1704,7 @@ func (r *raft) loadState(state pb.HardState) {
 	r.Vote = state.Vote
 }
 
-// zhou: 
+// zhou:
 
 // pastElectionTimeout returns true iff r.electionElapsed is greater
 // than or equal to the randomized election timeout in
