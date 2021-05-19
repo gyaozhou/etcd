@@ -26,12 +26,13 @@ import (
 	"time"
 
 	pb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.etcd.io/etcd/client/pkg/v3/logutil"
+	"go.etcd.io/etcd/client/pkg/v3/types"
 	"go.etcd.io/etcd/pkg/v3/contention"
-	"go.etcd.io/etcd/pkg/v3/logutil"
 	"go.etcd.io/etcd/pkg/v3/pbutil"
-	"go.etcd.io/etcd/pkg/v3/types"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
+	"go.etcd.io/etcd/server/v3/config"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/membership"
 	"go.etcd.io/etcd/server/v3/etcdserver/api/rafthttp"
 	"go.etcd.io/etcd/server/v3/wal"
@@ -88,7 +89,7 @@ type raftNode struct {
 	lg *zap.Logger
 
 	tickMu *sync.Mutex
-	
+
 	// zhou: ProposeConfChange() will fallthrough here
 	raftNodeConfig
 
@@ -120,12 +121,12 @@ type raftNodeConfig struct {
 	// zhou: ProposeConfChange() will fallthrough here
 	raft.Node
 
-	// zhou: 
+	// zhou:
 	raftStorage *raft.MemoryStorage
 	// zhou: what's the purpose for this storage, and relationship with rafStorage.
-	storage     Storage
+	storage Storage
 
-	heartbeat   time.Duration // for logging
+	heartbeat time.Duration // for logging
 
 	// transport specifies the transport to send and receive msgs to members.
 	// Sending messages MUST NOT block. It is okay to drop messages, since
@@ -134,7 +135,7 @@ type raftNodeConfig struct {
 	transport rafthttp.Transporter
 }
 
-// zhou: 
+// zhou:
 func newRaftNode(cfg raftNodeConfig) *raftNode {
 	var lg raft.Logger
 	if cfg.lg != nil {
@@ -185,11 +186,11 @@ func (r *raftNode) tick() {
 func (r *raftNode) start(rh *raftReadyHandler) {
 	internalTimeout := time.Second
 
-	// zhou: routine for 
+	// zhou: routine for
 	go func() {
 		defer r.onStop()
 		islead := false
-		
+
 		for {
 			select {
 			case <-r.ticker.C:
@@ -336,14 +337,14 @@ func (r *raftNode) start(rh *raftReadyHandler) {
 					// leader already processed 'MsgSnap' and signaled
 					notifyc <- struct{}{}
 				}
-				
+
 				// zhou: "Call Node.Advance() to signal readiness for the next batch of updates."
-				//       Means we already completed all things need to do. 
+				//       Means we already completed all things need to do.
 				//       Due to consensus protocol, we can't run a lot things in parallel.
-				//       We must indeed done something, then let Raft know it. In other word, 
+				//       We must indeed done something, then let Raft know it. In other word,
 				//       we can implemented use completition function to notify done.
 				r.Advance()
-				
+
 				// zhou: end of "case rd := <-r.Ready():"
 
 			case <-r.stopped:
@@ -451,9 +452,7 @@ func (r *raftNode) advanceTicks(ticks int) {
 	}
 }
 
-// zhou: 
-func startNode(cfg ServerConfig, cl *membership.RaftCluster, ids []types.ID) (id types.ID, n raft.Node, s *raft.MemoryStorage, w *wal.WAL) {
-
+func startNode(cfg config.ServerConfig, cl *membership.RaftCluster, ids []types.ID) (id types.ID, n raft.Node, s *raft.MemoryStorage, w *wal.WAL) {
 	var err error
 	member := cl.MemberByName(cfg.Name)
 	metadata := pbutil.MustMarshal(
@@ -470,7 +469,6 @@ func startNode(cfg ServerConfig, cl *membership.RaftCluster, ids []types.ID) (id
 		w.SetUnsafeNoFsync()
 	}
 
-
 	peers := make([]raft.Peer, len(ids))
 	for i, id := range ids {
 		var ctx []byte
@@ -482,27 +480,11 @@ func startNode(cfg ServerConfig, cl *membership.RaftCluster, ids []types.ID) (id
 	}
 
 	id = member.ID
-<<<<<<< HEAD
-	if cfg.Logger != nil {
-		cfg.Logger.Info(
-			"starting local member",
-			zap.String("local-member-id", id.String()),
-			zap.String("cluster-id", cl.ID().String()),
-		)
-	} else {
-		// zhou: 
-		plog.Infof("starting member %s in cluster %s", id, cl.ID())
-	}
-	
-////////////////////////////////////////////////////////////////////////////////
-
-=======
 	cfg.Logger.Info(
 		"starting local member",
 		zap.String("local-member-id", id.String()),
 		zap.String("cluster-id", cl.ID().String()),
 	)
->>>>>>> master
 	s = raft.NewMemoryStorage()
 	c := &raft.Config{
 		ID:              uint64(id),
@@ -513,23 +495,12 @@ func startNode(cfg ServerConfig, cl *membership.RaftCluster, ids []types.ID) (id
 		MaxInflightMsgs: maxInflightMsgs,
 		CheckQuorum:     true,
 		PreVote:         cfg.PreVote,
+		Logger:          NewRaftLoggerZap(cfg.Logger.Named("raft")),
 	}
-	if cfg.Logger != nil {
-		// called after capnslog setting in "init" function
-		if cfg.LoggerConfig != nil {
-			c.Logger, err = NewRaftLogger(cfg.LoggerConfig)
-			if err != nil {
-				log.Fatalf("cannot create raft logger %v", err)
-			}
-		} else if cfg.LoggerCore != nil && cfg.LoggerWriteSyncer != nil {
-			c.Logger = NewRaftLoggerFromZapCore(cfg.LoggerCore, cfg.LoggerWriteSyncer)
-		}
-	}
-
 	if len(peers) == 0 {
 		n = raft.RestartNode(c)
 	} else {
-     	// zhou: start a Node from scratch
+		// zhou: start a Node from scratch
 		n = raft.StartNode(c, peers)
 	}
 
@@ -540,9 +511,7 @@ func startNode(cfg ServerConfig, cl *membership.RaftCluster, ids []types.ID) (id
 	return id, n, s, w
 }
 
-// zhou: 
-func restartNode(cfg ServerConfig, snapshot *raftpb.Snapshot) (types.ID, *membership.RaftCluster, raft.Node, *raft.MemoryStorage, *wal.WAL) {
-
+func restartNode(cfg config.ServerConfig, snapshot *raftpb.Snapshot) (types.ID, *membership.RaftCluster, raft.Node, *raft.MemoryStorage, *wal.WAL) {
 	var walsnap walpb.Snapshot
 	if snapshot != nil {
 		walsnap.Index, walsnap.Term = snapshot.Metadata.Index, snapshot.Metadata.Term
@@ -555,9 +524,9 @@ func restartNode(cfg ServerConfig, snapshot *raftpb.Snapshot) (types.ID, *member
 		zap.String("local-member-id", id.String()),
 		zap.Uint64("commit-index", st.Commit),
 	)
-	cl := membership.NewCluster(cfg.Logger, "")
+	cl := membership.NewCluster(cfg.Logger)
 	cl.SetID(id, cid)
-	
+
 	// zhou: deserialization into MemoryStorage
 	s := raft.NewMemoryStorage()
 	if snapshot != nil {
@@ -576,18 +545,7 @@ func restartNode(cfg ServerConfig, snapshot *raftpb.Snapshot) (types.ID, *member
 		MaxInflightMsgs: maxInflightMsgs,
 		CheckQuorum:     true,
 		PreVote:         cfg.PreVote,
-	}
-	if cfg.Logger != nil {
-		// called after capnslog setting in "init" function
-		var err error
-		if cfg.LoggerConfig != nil {
-			c.Logger, err = NewRaftLogger(cfg.LoggerConfig)
-			if err != nil {
-				log.Fatalf("cannot create raft logger %v", err)
-			}
-		} else if cfg.LoggerCore != nil && cfg.LoggerWriteSyncer != nil {
-			c.Logger = NewRaftLoggerFromZapCore(cfg.LoggerCore, cfg.LoggerWriteSyncer)
-		}
+		Logger:          NewRaftLoggerZap(cfg.Logger.Named("raft")),
 	}
 
 	// zhou: raft/node.go, get Raft node.
@@ -600,7 +558,7 @@ func restartNode(cfg ServerConfig, snapshot *raftpb.Snapshot) (types.ID, *member
 	return id, cl, n, s, w
 }
 
-func restartAsStandaloneNode(cfg ServerConfig, snapshot *raftpb.Snapshot) (types.ID, *membership.RaftCluster, raft.Node, *raft.MemoryStorage, *wal.WAL) {
+func restartAsStandaloneNode(cfg config.ServerConfig, snapshot *raftpb.Snapshot) (types.ID, *membership.RaftCluster, raft.Node, *raft.MemoryStorage, *wal.WAL) {
 	var walsnap walpb.Snapshot
 	if snapshot != nil {
 		walsnap.Index, walsnap.Term = snapshot.Metadata.Index, snapshot.Metadata.Term
@@ -647,7 +605,7 @@ func restartAsStandaloneNode(cfg ServerConfig, snapshot *raftpb.Snapshot) (types
 		zap.Uint64("commit-index", st.Commit),
 	)
 
-	cl := membership.NewCluster(cfg.Logger, "")
+	cl := membership.NewCluster(cfg.Logger)
 	cl.SetID(id, cid)
 	s := raft.NewMemoryStorage()
 	if snapshot != nil {
@@ -664,17 +622,7 @@ func restartAsStandaloneNode(cfg ServerConfig, snapshot *raftpb.Snapshot) (types
 		MaxInflightMsgs: maxInflightMsgs,
 		CheckQuorum:     true,
 		PreVote:         cfg.PreVote,
-	}
-	if cfg.Logger != nil {
-		// called after capnslog setting in "init" function
-		if cfg.LoggerConfig != nil {
-			c.Logger, err = NewRaftLogger(cfg.LoggerConfig)
-			if err != nil {
-				log.Fatalf("cannot create raft logger %v", err)
-			}
-		} else if cfg.LoggerCore != nil && cfg.LoggerWriteSyncer != nil {
-			c.Logger = NewRaftLoggerFromZapCore(cfg.LoggerCore, cfg.LoggerWriteSyncer)
-		}
+		Logger:          NewRaftLoggerZap(cfg.Logger.Named("raft")),
 	}
 
 	n := raft.RestartNode(c)
