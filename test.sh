@@ -1,35 +1,35 @@
 #!/usr/bin/env bash
 #
 # Run all etcd tests
-# ./test
-# ./test -v
+# ./test.sh
+# ./test.sh -v
 #
 #
 # Run specified test pass
 #
-# $ PASSES=unit ./test
-# $ PASSES=integration ./test
+# $ PASSES=unit ./test.sh
+# $ PASSES=integration ./test.sh
 #
 #
 # Run tests for one package
 # Each pass has different default timeout, if you just run tests in one package or 1 test case then you can set TIMEOUT
 # flag for different expectation
 #
-# $ PASSES=unit PKG=./wal TIMEOUT=1m ./test
-# $ PASSES=integration PKG=./clientv3 TIMEOUT=1m ./test
+# $ PASSES=unit PKG=./wal TIMEOUT=1m ./test.sh
+# $ PASSES=integration PKG=./clientv3 TIMEOUT=1m ./test.sh
 #
 # Run specified unit tests in one package
 # To run all the tests with prefix of "TestNew", set "TESTCASE=TestNew ";
 # to run only "TestNew", set "TESTCASE="\bTestNew\b""
 #
-# $ PASSES=unit PKG=./wal TESTCASE=TestNew TIMEOUT=1m ./test
-# $ PASSES=unit PKG=./wal TESTCASE="\bTestNew\b" TIMEOUT=1m ./test
-# $ PASSES=integration PKG=./client/integration TESTCASE="\bTestV2NoRetryEOF\b" TIMEOUT=1m ./test
+# $ PASSES=unit PKG=./wal TESTCASE=TestNew TIMEOUT=1m ./test.sh
+# $ PASSES=unit PKG=./wal TESTCASE="\bTestNew\b" TIMEOUT=1m ./test.sh
+# $ PASSES=integration PKG=./client/integration TESTCASE="\bTestV2NoRetryEOF\b" TIMEOUT=1m ./test.sh
 #
 #
 # Run code coverage
 # COVERDIR must either be a absolute path or a relative path to the etcd root
-# $ COVERDIR=coverage PASSES="build build_cov cov" ./test
+# $ COVERDIR=coverage PASSES="build build_cov cov" ./test.sh
 # $ go tool cover -html ./coverage/cover.out
 set -e
 set -o pipefail
@@ -142,7 +142,7 @@ function generic_checker {
 }
 
 function functional_pass {
-  run ./tests/functional/build
+  run ./tests/functional/build.sh || exit 1
 
   # Clean up any data and logs from previous runs
   rm -rf /tmp/etcd-functional-* /tmp/etcd-functional-*.backup
@@ -162,11 +162,12 @@ function functional_pass {
   done
 
   log_callout "functional test START!"
-  run ./bin/etcd-tester --config ./tests/functional/functional.yaml && log_success "'etcd-tester' succeeded"
+  run ./bin/etcd-tester --config ./tests/functional/functional.yaml -test.v && log_success "'etcd-tester' succeeded"
   local etcd_tester_exit_code=$?
 
   if [[ "${etcd_tester_exit_code}" -ne "0" ]]; then
     log_error "ETCD_TESTER_EXIT_CODE:" ${etcd_tester_exit_code}
+    exit 1
   fi
 
   # shellcheck disable=SC2206
@@ -290,7 +291,7 @@ function cov_pass {
   fi
 
   if [ ! -f "bin/etcd_test" ]; then
-    log_error "etcd_test binary not found. Call: PASSES='build_cov' ./test"
+    log_error "etcd_test binary not found. Call: PASSES='build_cov' ./test.sh"
     return 255
   fi
 

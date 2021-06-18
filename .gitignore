@@ -1,3 +1,8 @@
+TAGS
+cscope.files
+cscope.out
+.DS_Store
+
 /agent-*
 /coverage
 /covdir
@@ -21,8 +26,5 @@ hack/tls-setup/certs
 *.tmp
 *.bak
 .gobincache/
-
-TAGS
-cscope.files
-cscope.out
-.DS_Store
+/Documentation/dev-guide/api_reference_v3.md
+/Documentation/dev-guide/api_concurrency_reference_v3.md

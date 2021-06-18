@@ -46,6 +46,8 @@ var (
 
 	revisionKey = []byte("authRevision")
 
+	rootPerm = authpb.Permission{PermType: authpb.READWRITE, Key: []byte{}, RangeEnd: []byte{0}}
+
 	ErrRootUserNotExist     = errors.New("auth: root user does not exist")
 	ErrRootRoleNotExist     = errors.New("auth: root user does not have root role")
 	ErrUserAlreadyExist     = errors.New("auth: user already exists")
@@ -54,6 +56,7 @@ var (
 	ErrRoleAlreadyExist     = errors.New("auth: role already exists")
 	ErrRoleNotFound         = errors.New("auth: role not found")
 	ErrRoleEmpty            = errors.New("auth: role name is empty")
+	ErrPermissionNotGiven   = errors.New("auth: permission not given")
 	ErrAuthFailed           = errors.New("auth: authentication failed, invalid user ID or password")
 	ErrNoPasswordUser       = errors.New("auth: authentication failed, password was given for no password user")
 	ErrPermissionDenied     = errors.New("auth: permission denied")
@@ -631,7 +634,11 @@ func (as *authStore) RoleGet(r *pb.AuthRoleGetRequest) (*pb.AuthRoleGetResponse,
 	if role == nil {
 		return nil, ErrRoleNotFound
 	}
-	resp.Perm = append(resp.Perm, role.KeyPermission...)
+	if rootRole == string(role.Name) {
+		resp.Perm = append(resp.Perm, &rootPerm)
+	} else {
+		resp.Perm = append(resp.Perm, role.KeyPermission...)
+	}
 	return &resp, nil
 }
 
@@ -780,6 +787,10 @@ func (perms permSlice) Swap(i, j int) {
 }
 
 func (as *authStore) RoleGrantPermission(r *pb.AuthRoleGrantPermissionRequest) (*pb.AuthRoleGrantPermissionResponse, error) {
+	if r.Perm == nil {
+		return nil, ErrPermissionNotGiven
+	}
+
 	tx := as.be.BatchTx()
 	tx.Lock()
 	defer tx.Unlock()
@@ -950,8 +961,8 @@ func delUser(tx backend.BatchTx, username string) {
 	tx.UnsafeDelete(buckets.AuthUsers, []byte(username))
 }
 
-func getRole(lg *zap.Logger, tx backend.BatchTx, rolename string) *authpb.Role {
-	_, vs := tx.UnsafeRange(buckets.AuthRoles, []byte(rolename), nil, 0)
+func getRole(lg *zap.Logger, tx backend.BatchTx, roleName string) *authpb.Role {
+	_, vs := tx.UnsafeRange(buckets.AuthRoles, []byte(roleName), nil, 0)
 	if len(vs) == 0 {
 		return nil
 	}
